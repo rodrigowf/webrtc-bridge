@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a **minimal standalone implementation** extracted from the TeleChat repository. It replaces TeleChat's WhatsApp voice interface with a browser-based WebRTC connection, serving as a **test and debug environment** for understanding and refining the WebRTC ↔ OpenAI Realtime API bridge.
 
-**Current Status:** Active development, testing, and debugging phase. The codebase intentionally strips away TeleChat's complexity to focus solely on the core voice bridging mechanism.
+**Current Status:** Active development, testing, and debugging. The codebase is trimmed to the core voice bridge, with a modern minimal frontend, animated background, and live dual meters.
 
-**Purpose:** Demonstrate and validate the audio bridging pattern between browser WebRTC and OpenAI's Realtime API before integrating back into TeleChat or other projects.
+**Purpose:** Demonstrate and validate the audio bridging pattern between browser WebRTC and OpenAI's Realtime API before integrating back into TeleChat or other projects. Frontend shows start/stop + mute controls, dual level meters (outgoing teal, incoming blue), and hides the audio element while keeping playback active.
 
 ## Project Architecture
 
@@ -29,7 +29,7 @@ OpenAI response → audioSink → browserSource → PC-BROWSER → Browser speak
 - `browserSource` (RTCAudioSource): Sends audio back to browser
 - `audioSource` (RTCAudioSource): Sends user audio to OpenAI
 
-All audio is PCM16 format, bridged frame-by-frame without buffering.
+All audio is PCM16 format, bridged frame-by-frame without buffering. Both sides wait for ICE gathering before sending SDP to reduce early packet loss; first-frame metadata is logged.
 
 ## Development Commands
 
@@ -43,16 +43,16 @@ npm run build
 # Start production server (requires build first)
 npm start
 
-# Build and run in development
+# Build and run in development (build + node dist/server.js)
 npm run dev
 
-# Run tests (currently only health endpoint)
+# Run tests (health + interactive E2E)
 npm test
 ```
 
-## Comprehensive Logging System
+## Comprehensive Logging & UI Meters
 
-The entire codebase includes **extensive console logging** for debugging and monitoring. All components log their operations with structured prefixes for easy filtering and identification.
+The entire codebase includes **extensive console logging** plus live dual audio meters in the UI. All components log their operations with structured prefixes for easy filtering and identification.
 
 ### Logging Prefixes
 
@@ -63,7 +63,7 @@ The entire codebase includes **extensive console logging** for debugging and mon
 - `[OPENAI-REALTIME]` - OpenAI Realtime API connection, events, data channel
 
 **Frontend:**
-- `[FRONTEND]` - Browser WebRTC client, connection setup, user interactions
+- `[FRONTEND]` - Browser WebRTC client, connection setup, user interactions, meter lifecycle
 
 ### What Gets Logged
 
@@ -88,6 +88,7 @@ The entire codebase includes **extensive console logging** for debugging and mon
 - SDP offer/answer processing
 - Critical connection ordering confirmation
 - Cleanup operations with detailed steps
+- ICE gathering waits on the answer, connection state logs, first-frame metadata
 
 **OpenAI Realtime ([openai.realtime.ts](src/openai/openai.realtime.ts)):**
 - Session initialization
@@ -97,6 +98,7 @@ The entire codebase includes **extensive console logging** for debugging and mon
 - **Event counters** (first 10 events, then every 50th)
 - Session.update and response.create events
 - Text deltas and completions
+- Server-side VAD enabled (`turn_detection: server_vad`)
 - **Assistant audio frame counts** (every 100 frames)
 - Connection errors and timeouts
 - Cleanup operations
@@ -112,6 +114,7 @@ The entire codebase includes **extensive console logging** for debugging and mon
 - SDP offer/answer with lengths
 - Remote track reception
 - Audio playback status
+- Live dual audio meters (mic → model, model → user) driven by Web Audio analysers
 - All error conditions
 
 ### Log Output Features
@@ -193,6 +196,7 @@ Playwright test captures and displays:
 - Microphone permission auto-granted (fake device)
 - Full DevTools access (F12) - shows same `[FRONTEND]` logs
 - Manual interaction while watching logs
+- Live dual meters: teal = outgoing/mic, blue = incoming/assistant. Audio element is hidden but active for playback.
 
 ### Available Commands
 
