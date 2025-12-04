@@ -14,10 +14,11 @@ The goal of this subproject (`webrtc-bridge/`) is to provide a **minimal standal
 It replicates the architecture used in the main TeleChat project (WhatsApp ↔ OpenAI) but replaces the WhatsApp leg with a browser WebRTC connection.
 
 **Key Features:**
-- **Frontend:** Simple HTML/JS using `getUserMedia` and `RTCPeerConnection`.
+- **Frontend:** Modern, minimal HTML/JS with animated background, start/stop + mute controls, and dual live audio meters (outgoing mic → model, incoming assistant → user). Audio plays via a hidden element.
 - **Backend:** Node.js + TypeScript using `wrtc` (node-webrtc).
 - **Audio Routing:** Bridges audio frames between the Browser PC and the OpenAI PC using `RTCAudioSink` and `RTCAudioSource`.
-- **Jitter Handling:** Implements the specific connection ordering (OpenAI first, then Client) to prevent initial audio packet loss.
+- **Jitter Handling:** Implements the specific connection ordering (OpenAI first, then Client) to prevent initial audio packet loss, with ICE gathering waits on both legs.
+- **VAD & transcripts:** Server-side VAD enabled in Realtime session; transcript deltas and first-frame metadata are logged to aid debugging.
 
 ---
 
@@ -42,8 +43,8 @@ webrtc-bridge/
 │   └── webrtc/
 │       └── browser-bridge.ts   # Browser WebRTC handler (PC-BROWSER) & bridging logic
 ├── public/
-│   ├── index.html          # Minimal UI
-│   └── main.js             # Frontend WebRTC logic
+│   ├── index.html          # Minimal voice UI + animated background + dual meters
+│   └── main.js             # Frontend WebRTC logic, start/stop, mute, audio meters
 └── tests/
     └── health.test.ts      # Basic health check test
 ```
@@ -91,10 +92,10 @@ Configuration is handled in `src/config.env.ts` using `dotenv`.
 ### 5.2. OpenAI Client (`src/openai/openai.realtime.ts`)
 - Manages the **PC-OA** (PeerConnection to OpenAI).
 - **Setup:**
-  1. Creates `RTCPeerConnection`.
+  1. Creates `RTCPeerConnection` (with ICE gathering wait + state logging).
   2. Adds an `RTCAudioSource` track (to send user audio).
-  3. Sets up `ontrack` to capture assistant audio into an `RTCAudioSink`.
-  4. Creates a Data Channel `oai-events` for control messages (session updates, response creation).
+  3. Sets up `ontrack` to capture assistant audio into an `RTCAudioSink` (logs first-frame metadata).
+  4. Creates a Data Channel `oai-events` for control messages (session updates, response creation), with server-side VAD (`turn_detection: server_vad`) and transcript delta logging.
   5. Performs SDP handshake with OpenAI API via REST (`https://api.openai.com/v1/realtime`).
 - **Exports:** `RealtimeSession` object with methods to send audio frames and receive assistant audio frames.
 
@@ -116,21 +117,21 @@ Configuration is handled in `src/config.env.ts` using `dotenv`.
   3. **Setup Audio Routing:**
      - **Browser → OpenAI:** In `browserPC.ontrack`, attach `browserSink`. On data, call `realtime.sendUserAudio(frame)`.
      - **OpenAI → Browser:** Subscribe to `realtime.onAssistantAudio`. On data, call `browserSource.onData(frame)`.
-  4. **Only then** set the Remote Description (Browser Offer) and create Answer.
+  4. Wait for ICE gathering to complete on the answer before returning it.
+  5. **Only then** set the Remote Description (Browser Offer) and create Answer.
   - *Why?* This ensures the sink/source pipeline is fully ready before media starts flowing, preventing dropped initial packets and audio jitter.
 
 ---
 
 ## 6. Frontend Architecture
 
-- **`public/index.html`**: Simple "Start Call" button and `<audio autoplay>` element.
+- **`public/index.html`**: Animated gradient background, merged header/indicator card with Start/Stop + Mute buttons, status dot, and dual audio meters (outgoing teal, incoming blue). Audio element is hidden but active.
 - **`public/main.js`**:
-  1. Gets microphone stream (`navigator.mediaDevices.getUserMedia`).
-  2. Creates `RTCPeerConnection`.
-  3. Adds microphone track to PC.
-  4. Sets up `ontrack` to play incoming audio in the `<audio>` element.
-  5. Creates SDP Offer and POSTs it to `/signal`.
-  6. Applies returned SDP Answer.
+  1. Gets microphone stream (`getUserMedia`) and initializes Web Audio analysers for live meters.
+  2. Creates `RTCPeerConnection`, adds mic tracks, and handles incoming audio playback.
+  3. Creates SDP Offer, POSTs to `/signal`, and applies returned SDP Answer.
+  4. Updates UI status, meters, and mute state; provides start/stop lifecycle and cleanup.
+  5. Maintains simple state objects (`state`, `audioState`, `ui`) for clarity.
 
 ---
 

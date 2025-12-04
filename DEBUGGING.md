@@ -1,6 +1,6 @@
 # Interactive Debugging Guide
 
-This project includes **comprehensive logging throughout the entire codebase** plus interactive E2E testing tools built with Playwright that allow you to manually test the WebRTC bridge while monitoring both frontend and backend logs in real-time.
+This project includes **comprehensive logging throughout the entire codebase** plus interactive E2E testing tools built with Playwright that allow you to manually test the WebRTC bridge while monitoring both frontend and backend logs in real-time. The UI now exposes live dual audio meters (outgoing mic → model, incoming model → you) so you can visually confirm levels in both directions.
 
 ## Comprehensive Logging System
 
@@ -19,9 +19,10 @@ All code includes structured console logs with prefixes for easy filtering:
 - ✅ Audio frame counters (every 100 frames, both directions)
 - ✅ Event counters (first 10, then every 50th)
 - ✅ SDP length tracking
-- ✅ Connection state changes
+- ✅ Connection state changes (plus ICE gathering waits)
 - ✅ API key security (truncated in logs)
 - ✅ Detailed error context
+- ✅ First-frame metadata (sample rate/channels) and transcript deltas from Realtime
 
 ## Quick Start
 
@@ -109,6 +110,7 @@ Example frontend logs you'll see:
 [FRONTEND] Connection state: connected
 [FRONTEND] ontrack event received!
 [FRONTEND] Remote audio playback started successfully
+[FRONTEND] Start/Stop button clicked
 [FRONTEND] ✅ WebRTC connection established successfully!
 ```
 
@@ -117,6 +119,7 @@ Example frontend logs you'll see:
 - You can interact normally (click buttons, etc.)
 - Microphone permission will be auto-granted (using fake device)
 - You can use DevTools (F12) to see the same `[FRONTEND]` logs in real-time
+- Dual meters show live levels: teal = your mic to the model, blue = assistant audio back to you. The audio player is hidden but active for playback.
 
 ## Testing Workflow
 

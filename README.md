@@ -1,9 +1,9 @@
 # WebRTC ↔ OpenAI Realtime Voice Bridge
 
-This is a minimal project that bridges a browser WebRTC connection to OpenAI's Realtime voice API via a Node.js backend.
+This project bridges a browser WebRTC connection to OpenAI's Realtime voice API via a Node.js backend. It now ships a minimal, modern voice UI with live meters for both directions, animated background, and inline status indicators.
 
-- Frontend: simple HTML + JavaScript that captures microphone audio and connects to the backend via WebRTC.
-- Backend: Node.js + TypeScript server that accepts a WebRTC connection from the browser and forwards audio to OpenAI Realtime via another WebRTC connection.
+- Frontend: HTML/CSS/JS that captures microphone audio, performs signaling, shows start/stop + mute controls, and renders dual audio level meters (outgoing = mic → model, incoming = assistant → you). Audio plays via a hidden element.
+- Backend: Node.js + TypeScript server that accepts a WebRTC connection from the browser and forwards audio to OpenAI Realtime via another WebRTC connection, with ICE-gathering waits and detailed logging.
 
 ## Setup
 
@@ -33,7 +33,14 @@ PORT=8080
 npm run dev
 ```
 
-Then open `http://localhost:8080` in your browser and click **Start Call**.
+Then open `http://localhost:8080` in your browser and click **Start**. Use **Mute** to toggle your mic; meters show live levels for you (teal) and the assistant (blue).
+
+## UI at a Glance
+
+- Start/Stop and Mute controls in a compact header.
+- Dual live audio meters (outgoing teal, incoming blue) driven by real audio levels.
+- Hidden audio player keeps playback active while keeping the UI minimal.
+- Animated gradient background with streamlined cards for indicators and transcripts.
 
 ## Build & run
 

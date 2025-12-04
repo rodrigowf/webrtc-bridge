@@ -1,149 +1,233 @@
-const startButton = document.getElementById('start');
-const statusEl = document.getElementById('status');
-const remoteAudio = document.getElementById('remoteAudio');
+const ui = {
+  startButton: document.getElementById('start'),
+  muteButton: document.getElementById('mute'),
+  statusEl: document.getElementById('status'),
+  subStatusEl: document.getElementById('subStatus'),
+  statusDot: document.getElementById('statusDot'),
+  meterOutgoing: document.getElementById('meterOutgoing'),
+  meterIncoming: document.getElementById('meterIncoming'),
+  transcriptEl: document.getElementById('transcript'),
+  transcriptEmpty: document.getElementById('transcriptEmpty'),
+  remoteAudio: document.getElementById('remoteAudio'),
+};
 
-let pc = null;
+const state = {
+  pc: null,
+  localStream: null,
+  isMuted: false,
+  isActive: false,
+};
+
+const audioState = {
+  ctx: null,
+  analyserOut: null,
+  analyserIn: null,
+  meterLoop: null,
+};
 
 console.log('[FRONTEND] Script loaded and initialized');
+
+function setStatus(main, sub, tone = 'idle') {
+  ui.statusEl.textContent = main;
+  ui.subStatusEl.textContent = sub;
+  const toneMap = { idle: 'var(--muted)', live: 'var(--accent)', error: '#ff9a8b' };
+  ui.statusDot.style.background = toneMap[tone] || 'var(--muted)';
+}
+
+function appendTranscript(text, role = 'assistant') {
+  if (ui.transcriptEmpty) ui.transcriptEmpty.remove();
+  const line = document.createElement('div');
+  line.className = 'line';
+  line.textContent = (role === 'user' ? 'You: ' : 'Assistant: ') + text;
+  ui.transcriptEl.appendChild(line);
+  ui.transcriptEl.scrollTop = ui.transcriptEl.scrollHeight;
+}
+
+async function ensureAudioContext() {
+  if (!audioState.ctx) {
+    audioState.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioState.ctx.state === 'suspended') {
+    await audioState.ctx.resume();
+  }
+}
+
+function attachOutgoingAnalyser(stream) {
+  audioState.analyserOut = audioState.ctx.createAnalyser();
+  audioState.analyserOut.fftSize = 256;
+  audioState.analyserOut.smoothingTimeConstant = 0.4;
+  const outSource = audioState.ctx.createMediaStreamSource(stream);
+  outSource.connect(audioState.analyserOut);
+}
+
+function attachIncomingAnalyser(stream) {
+  if (!audioState.analyserIn) {
+    audioState.analyserIn = audioState.ctx.createAnalyser();
+    audioState.analyserIn.fftSize = 256;
+    audioState.analyserIn.smoothingTimeConstant = 0.5;
+  }
+  const inSource = audioState.ctx.createMediaStreamSource(stream);
+  inSource.connect(audioState.analyserIn);
+}
 
 async function startCall() {
   console.log('[FRONTEND] startCall() function invoked');
   try {
-    startButton.disabled = true;
-    statusEl.textContent = 'Requesting microphone permission...';
-    console.log('[FRONTEND] Requesting microphone access...');
+    ui.startButton.disabled = true;
+    setStatus('Requesting microphone...', 'Grant access to begin', 'idle');
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    console.log('[FRONTEND] Microphone access granted, stream tracks:', stream.getTracks().length);
+    state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    console.log('[FRONTEND] Microphone access granted, stream tracks:', state.localStream.getTracks().length);
 
-    statusEl.textContent = 'Creating WebRTC connection...';
-    console.log('[FRONTEND] Creating RTCPeerConnection...');
+    await ensureAudioContext();
+    attachOutgoingAnalyser(state.localStream);
 
-    pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-    });
+    setStatus('Connecting...', 'Opening bridge', 'idle');
+    state.pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
     console.log('[FRONTEND] RTCPeerConnection created');
 
-    stream.getTracks().forEach((track) => {
+    state.localStream.getTracks().forEach((track) => {
       console.log('[FRONTEND] Adding track to peer connection:', track.kind, track.label);
-      pc.addTrack(track, stream);
+      state.pc.addTrack(track, state.localStream);
     });
-    console.log('[FRONTEND] All local tracks added to peer connection');
 
-    console.log('[FRONTEND] Setting up ontrack event handler...');
-    pc.ontrack = (event) => {
-      console.log('[FRONTEND] ontrack event received!');
-      console.log('[FRONTEND] Remote track kind:', event.track.kind);
-      console.log('[FRONTEND] Remote streams:', event.streams.length);
-      console.log('[FRONTEND] Track enabled:', event.track.enabled);
-      console.log('[FRONTEND] Track muted:', event.track.muted);
-      console.log('[FRONTEND] Track readyState:', event.track.readyState);
+    state.pc.ontrack = (event) => {
+      console.log('[FRONTEND] ontrack event received!', event.track.kind);
+      const remoteStream = event.streams?.[0] || new MediaStream([event.track]);
+      ui.remoteAudio.srcObject = remoteStream;
+      ui.remoteAudio.volume = 1.0;
 
-      // Handle case where track is not associated with a stream
-      let remoteStream;
-      if (event.streams && event.streams.length > 0) {
-        console.log('[FRONTEND] Using stream from event.streams');
-        remoteStream = event.streams[0];
-      } else {
-        console.log('[FRONTEND] No stream in event - creating new MediaStream with track');
-        remoteStream = new MediaStream([event.track]);
-      }
+      event.track.onunmute = () => console.log('[FRONTEND] ✅ Remote track UNMUTED - audio should now be audible!');
 
-      // Set audio element properties
-      remoteAudio.srcObject = remoteStream;
-      remoteAudio.volume = 1.0;
-      console.log('[FRONTEND] Remote audio element srcObject set, volume:', remoteAudio.volume);
-      console.log('[FRONTEND] Audio element muted:', remoteAudio.muted);
-      console.log('[FRONTEND] Audio element paused:', remoteAudio.paused);
+      attachIncomingAnalyser(remoteStream);
 
-      // Monitor track activity BEFORE attempting to play
-      event.track.onmute = () => {
-        console.log('[FRONTEND] Remote track MUTED');
-      };
+      ui.remoteAudio
+        .play()
+        .then(() => console.log('[FRONTEND] ✅ Remote audio playback started successfully'))
+        .catch((err) => console.error('[FRONTEND] ❌ Failed to start audio playback:', err));
 
-      event.track.onunmute = () => {
-        console.log('[FRONTEND] ✅ Remote track UNMUTED - audio should now be audible!');
-      };
-
-      event.track.onended = () => {
-        console.log('[FRONTEND] Remote track ENDED');
-      };
-
-      // Attempt to play immediately (autoplay should handle it)
-      // Even if track is muted initially, it will unmute shortly after
-      remoteAudio.play()
-        .then(() => {
-          console.log('[FRONTEND] ✅ Remote audio playback started successfully');
-          console.log('[FRONTEND] Audio element is now playing, paused:', remoteAudio.paused);
-          console.log('[FRONTEND] Current track muted state:', event.track.muted);
-
-          // If track is still muted, we'll get an unmute event soon
-          if (event.track.muted) {
-            console.log('[FRONTEND] ⚠️  Track is currently muted, waiting for unmute event...');
-          } else {
-            console.log('[FRONTEND] ✅ Track is unmuted, audio should be playing!');
-          }
-        })
-        .catch((err) => {
-          console.error('[FRONTEND] ❌ Failed to start audio playback:', err);
-          console.error('[FRONTEND] Error name:', err.name);
-          console.error('[FRONTEND] Error message:', err.message);
-        });
+      startMeters();
     };
 
-    pc.oniceconnectionstatechange = () => {
-      console.log('[FRONTEND] ICE connection state:', pc.iceConnectionState);
-    };
+    state.pc.oniceconnectionstatechange = () => console.log('[FRONTEND] ICE connection state:', state.pc.iceConnectionState);
+    state.pc.onconnectionstatechange = () => console.log('[FRONTEND] Connection state:', state.pc.connectionState);
 
-    pc.onconnectionstatechange = () => {
-      console.log('[FRONTEND] Connection state:', pc.connectionState);
-    };
+    const offer = await state.pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
+    await state.pc.setLocalDescription(offer);
 
-    statusEl.textContent = 'Creating SDP offer...';
-    console.log('[FRONTEND] Creating SDP offer...');
-    const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
-    console.log('[FRONTEND] Offer created, SDP length:', offer.sdp.length);
-    await pc.setLocalDescription(offer);
-    console.log('[FRONTEND] Local description set');
-
-    statusEl.textContent = 'Sending offer to backend...';
-    console.log('[FRONTEND] Sending offer to /signal endpoint...');
+    setStatus('Signaling...', 'Syncing peers', 'idle');
     const res = await fetch('/signal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ offer: offer.sdp }),
     });
-    console.log('[FRONTEND] Response received, status:', res.status);
 
     const data = await res.json();
-    console.log('[FRONTEND] Response data parsed');
     if (!res.ok) {
       console.error('[FRONTEND] Signaling failed:', data.error);
       throw new Error(data.error || 'Signaling failed');
     }
 
-    statusEl.textContent = 'Applying answer from backend...';
-    console.log('[FRONTEND] Setting remote description with answer, SDP length:', data.answer.length);
-    await pc.setRemoteDescription({ type: 'answer', sdp: data.answer });
-    console.log('[FRONTEND] Remote description set successfully');
-
-    statusEl.textContent = 'Connected. Start speaking!';
+    await state.pc.setRemoteDescription({ type: 'answer', sdp: data.answer });
+    setStatus('Connected', 'Speak freely.', 'live');
+    state.isActive = true;
+    ui.startButton.textContent = 'Stop';
+    ui.startButton.classList.remove('primary');
+    ui.startButton.classList.add('danger');
+    ui.muteButton.disabled = false;
     console.log('[FRONTEND] ✅ WebRTC connection established successfully!');
   } catch (err) {
     console.error('[FRONTEND] Error during connection setup:', err);
-    statusEl.textContent = 'Error: ' + (err.message || err);
-    startButton.disabled = false;
+    setStatus('Error', err.message || String(err), 'error');
+    ui.startButton.disabled = false;
+    state.isActive = false;
   }
 }
 
-startButton.addEventListener('click', () => {
-  console.log('[FRONTEND] Start button clicked');
-  if (!pc) {
-    console.log('[FRONTEND] No existing connection - starting new call');
+function stopCall() {
+  console.log('[FRONTEND] stopCall() invoked');
+  state.isActive = false;
+  stopMeters();
+  if (state.pc) {
+    state.pc.getSenders().forEach((sender) => sender.track?.stop());
+    state.pc.close();
+    state.pc = null;
+  }
+  if (state.localStream) {
+    state.localStream.getTracks().forEach((t) => t.stop());
+    state.localStream = null;
+  }
+  ui.startButton.textContent = 'Start';
+  ui.startButton.classList.add('primary');
+  ui.startButton.classList.remove('danger');
+  ui.startButton.disabled = false;
+  ui.muteButton.disabled = true;
+  ui.muteButton.textContent = 'Mute';
+  state.isMuted = false;
+  setStatus('Idle', 'Ready when you are.', 'idle');
+}
+
+function toggleMute() {
+  if (!state.localStream) return;
+  state.isMuted = !state.isMuted;
+  state.localStream.getAudioTracks().forEach((t) => (t.enabled = !state.isMuted));
+  ui.muteButton.textContent = state.isMuted ? 'Unmute' : 'Mute';
+  ui.subStatusEl.textContent = state.isMuted ? 'You are muted' : 'Speak freely — we are listening.';
+}
+
+function computeLevel(analyser) {
+  if (!analyser) return 0;
+  const data = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(data);
+  let sum = 0;
+  for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+  const rms = Math.sqrt(sum / data.length) / 255;
+  return Math.min(1, rms * 1.8);
+}
+
+function renderMeter(el, level) {
+  if (!el) return;
+  const bars = el.querySelectorAll('span');
+  const base = level * 16 + 3;
+  bars.forEach((bar, idx) => {
+    const jitter = (idx % 2 === 0 ? 1 : -1) * 2;
+    const height = Math.max(3, Math.min(16, base + jitter));
+    bar.style.height = `${height}px`;
+  });
+}
+
+function meterTick() {
+  const outLevel = computeLevel(audioState.analyserOut);
+  const inLevel = computeLevel(audioState.analyserIn);
+  renderMeter(ui.meterOutgoing, outLevel);
+  renderMeter(ui.meterIncoming, inLevel);
+  audioState.meterLoop = requestAnimationFrame(meterTick);
+}
+
+function startMeters() {
+  stopMeters();
+  audioState.meterLoop = requestAnimationFrame(meterTick);
+}
+
+function stopMeters() {
+  if (audioState.meterLoop) cancelAnimationFrame(audioState.meterLoop);
+  audioState.meterLoop = null;
+  renderMeter(ui.meterOutgoing, 0);
+  renderMeter(ui.meterIncoming, 0);
+}
+
+ui.startButton.addEventListener('click', () => {
+  console.log('[FRONTEND] Start/Stop button clicked');
+  if (!state.isActive) {
     void startCall();
   } else {
-    console.log('[FRONTEND] Connection already exists - ignoring click');
+    stopCall();
   }
 });
 
-console.log('[FRONTEND] Event listener attached to start button');
+ui.muteButton.addEventListener('click', () => {
+  console.log('[FRONTEND] Mute/Unmute toggled');
+  toggleMute();
+});
+
+console.log('[FRONTEND] Event listeners attached');
