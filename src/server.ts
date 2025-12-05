@@ -11,6 +11,7 @@ import {
   subscribeCodexEvents,
   getCurrentThreadId,
 } from './codex/codex.service.js';
+import { subscribeTranscriptEvents } from './openai/openai.realtime.js';
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -122,19 +123,30 @@ app.get('/codex/events', (req, res) => {
   res.write('data: {"type":"connected"}\n\n');
 
   // Subscribe to Codex events
-  const unsubscribe = subscribeCodexEvents((event) => {
+  const unsubscribeCodex = subscribeCodexEvents((event) => {
     try {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('[SERVER] Error writing SSE event:', err);
+      console.error('[SERVER] Error writing SSE Codex event:', err);
+    }
+  });
+
+  // Subscribe to transcript events
+  const unsubscribeTranscript = subscribeTranscriptEvents((event) => {
+    try {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[SERVER] Error writing SSE transcript event:', err);
     }
   });
 
   // Handle client disconnect
   req.on('close', () => {
     console.log('[SERVER] SSE client disconnected');
-    unsubscribe();
+    unsubscribeCodex();
+    unsubscribeTranscript();
   });
 });
 

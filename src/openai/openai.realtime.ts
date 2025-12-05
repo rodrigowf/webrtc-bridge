@@ -1,12 +1,39 @@
 import axios from 'axios';
 import wrtc, { type MediaStreamTrack, type RTCRtpReceiver, type RTCDataChannel, type RTCPeerConnection } from 'wrtc';
 import { env } from '../config.env.js';
-import { runCodex } from '../codex/codex.service.js';
+import { runCodex, subscribeCodexEvents } from '../codex/codex.service.js';
 import { loadContextMemory, recordMemoryRun } from '../memory/context.memory.js';
 
 const RTCPeerConnectionClass = wrtc.RTCPeerConnection;
 const { RTCAudioSink, RTCAudioSource } = wrtc.nonstandard;
 type RTCAudioSinkEvent = { samples: Int16Array };
+
+// Transcript event broadcasting - shares the same SSE channel as Codex events
+export type TranscriptEvent = {
+  type: 'transcript_delta' | 'transcript_done' | 'user_transcript_delta' | 'user_transcript_done';
+  text: string;
+  role: 'assistant' | 'user';
+  timestamp: number;
+};
+
+type TranscriptListener = (event: TranscriptEvent) => void;
+const transcriptListeners = new Set<TranscriptListener>();
+
+export function subscribeTranscriptEvents(listener: TranscriptListener) {
+  transcriptListeners.add(listener);
+  return () => transcriptListeners.delete(listener);
+}
+
+function broadcastTranscript(type: TranscriptEvent['type'], text: string, role: 'assistant' | 'user') {
+  const event: TranscriptEvent = { type, text, role, timestamp: Date.now() };
+  for (const listener of transcriptListeners) {
+    try {
+      listener(event);
+    } catch (err) {
+      console.error('[OPENAI-REALTIME] Transcript listener error:', err);
+    }
+  }
+}
 
 export type RealtimeAudioFrame = RTCAudioSinkEvent;
 
@@ -280,8 +307,25 @@ Be conversational and friendly. Always explain what Codex found in a clear, natu
         break;
       case 'response.audio_transcript.delta': {
         const transcript = payload?.delta ?? '';
-        if (transcript && eventCount <= 50) {
-          console.log('[OPENAI-REALTIME] Transcript delta:', transcript.slice(0, 200));
+        if (transcript) {
+          console.log('[OPENAI-REALTIME] Assistant transcript delta:', transcript.slice(0, 200));
+          broadcastTranscript('transcript_delta', transcript, 'assistant');
+        }
+        break;
+      }
+      case 'response.audio_transcript.done': {
+        const transcript = payload?.transcript ?? '';
+        if (transcript) {
+          console.log('[OPENAI-REALTIME] Assistant transcript done:', transcript.slice(0, 200));
+          broadcastTranscript('transcript_done', transcript, 'assistant');
+        }
+        break;
+      }
+      case 'conversation.item.input_audio_transcription.completed': {
+        const transcript = payload?.transcript ?? '';
+        if (transcript) {
+          console.log('[OPENAI-REALTIME] User transcript:', transcript.slice(0, 200));
+          broadcastTranscript('user_transcript_done', transcript, 'user');
         }
         break;
       }
@@ -334,6 +378,7 @@ Be conversational and friendly. Always explain what Codex found in a clear, natu
         turn_detection: { type: 'server_vad' },
         modalities: ['audio', 'text'],
         voice: 'alloy',
+        input_audio_transcription: { model: 'whisper-1' },
         tools: [
           {
             type: 'function',

@@ -123,9 +123,62 @@
       .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
       .transcript { display: grid; gap: 8px; max-height: 220px; overflow: auto; padding-right: 4px; }
       .transcript .line { padding: 10px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--card-border); color: var(--text); font-size: 14px; line-height: 1.4; }
+      .transcript .line.streaming { border-style: dashed; animation: pulse 1.5s ease-in-out infinite; }
       .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
       audio { width: 100%; margin-top: 8px; opacity: 0.7; }
       .sr-audio { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+
+      /* Codex Activity Panel */
+      .codex-panel { }
+      .codex-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+      .codex-header h2 { margin: 0; }
+      .codex-status {
+        font-size: 11px;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .codex-status.idle { background: rgba(154, 161, 181, 0.2); color: var(--muted); }
+      .codex-status.connected { background: rgba(108, 240, 194, 0.15); color: var(--accent); }
+      .codex-status.running { background: rgba(94, 163, 255, 0.2); color: var(--accent-2); }
+      .codex-status.error { background: rgba(255, 107, 107, 0.2); color: var(--danger); }
+      .codex-output {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 300px;
+        overflow-y: auto;
+        padding-right: 4px;
+        font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+        font-size: 13px;
+      }
+      .codex-line {
+        padding: 8px 12px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--card-border);
+        line-height: 1.5;
+        word-break: break-word;
+        white-space: pre-wrap;
+      }
+      .codex-line.empty { color: var(--muted); font-style: italic; }
+      .codex-line.info { border-left: 3px solid var(--accent-2); }
+      .codex-line.function { border-left: 3px solid #a78bfa; color: #c4b5fd; }
+      .codex-line.success { border-left: 3px solid var(--accent); color: var(--accent); }
+      .codex-line.warning { border-left: 3px solid #fbbf24; color: #fcd34d; }
+      .codex-line.error { border-left: 3px solid var(--danger); color: #fca5a5; }
+      .codex-line.output { border-left: 3px solid var(--muted); color: var(--text); background: rgba(0,0,0,0.2); }
+      .codex-line.agent { border-left: 3px solid var(--accent-2); }
+      .codex-line.streaming {
+        animation: pulse 1.5s ease-in-out infinite;
+        border-style: dashed;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+      }
       @media (max-width: 720px) {
         .hero { flex-direction: column; align-items: flex-start; }
         .controls { width: 100%; justify-content: stretch; }
@@ -175,6 +228,16 @@
         <h2>Transcriptions</h2>
         <div id="transcript" class="transcript">
           <div class="line" id="transcriptEmpty">Speak to stream transcript.</div>
+        </div>
+      </div>
+
+      <div class="panel codex-panel">
+        <div class="codex-header">
+          <h2>Codex Activity</h2>
+          <span id="codexStatus" class="codex-status idle">Connecting...</span>
+        </div>
+        <div id="codexOutput" class="codex-output">
+          <div class="codex-line empty" id="codexEmpty">Waiting for Codex activity...</div>
         </div>
       </div>
     </div>

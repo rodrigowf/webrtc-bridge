@@ -9,6 +9,9 @@ const ui = {
   transcriptEl: document.getElementById('transcript'),
   transcriptEmpty: document.getElementById('transcriptEmpty'),
   remoteAudio: document.getElementById('remoteAudio'),
+  codexOutput: document.getElementById('codexOutput'),
+  codexEmpty: document.getElementById('codexEmpty'),
+  codexStatus: document.getElementById('codexStatus'),
 };
 
 const state = {
@@ -231,3 +234,264 @@ ui.muteButton.addEventListener('click', () => {
 });
 
 console.log('[FRONTEND] Event listeners attached');
+
+// --- Codex SSE Event Stream ---
+let codexEventSource = null;
+
+function connectCodexEvents() {
+  if (codexEventSource) {
+    codexEventSource.close();
+  }
+
+  console.log('[FRONTEND] Connecting to Codex SSE stream...');
+  codexEventSource = new EventSource('/codex/events');
+
+  codexEventSource.onopen = () => {
+    console.log('[FRONTEND] Codex SSE connected');
+    setCodexStatus('connected', 'Listening for Codex events...');
+  };
+
+  codexEventSource.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      console.log('[FRONTEND] Codex event:', data.type, data);
+      handleCodexEvent(data);
+    } catch (err) {
+      console.error('[FRONTEND] Failed to parse Codex event:', err);
+    }
+  };
+
+  codexEventSource.onerror = (err) => {
+    console.error('[FRONTEND] Codex SSE error:', err);
+    setCodexStatus('error', 'Connection lost. Reconnecting...');
+  };
+}
+
+function setCodexStatus(state, text) {
+  if (!ui.codexStatus) return;
+  ui.codexStatus.textContent = text;
+  ui.codexStatus.className = 'codex-status ' + state;
+}
+
+function handleCodexEvent(data) {
+  if (data.type === 'connected') {
+    setCodexStatus('connected', 'Connected');
+    return;
+  }
+
+  if (data.type === 'thread_reset') {
+    clearCodexOutput();
+    setCodexStatus('idle', 'Thread reset');
+    return;
+  }
+
+  if (data.type === 'turn_aborted') {
+    appendCodexLine('⚠️ Aborted: ' + (data.payload?.reason || 'cancelled'), 'warning');
+    setCodexStatus('idle', 'Aborted');
+    return;
+  }
+
+  if (data.type === 'turn_error') {
+    appendCodexLine('❌ Error: ' + (data.payload?.message || 'unknown error'), 'error');
+    setCodexStatus('error', 'Error');
+    return;
+  }
+
+  if (data.type === 'thread_event') {
+    handleThreadEvent(data.payload);
+    return;
+  }
+
+  // Handle transcript events
+  if (data.type === 'transcript_delta' || data.type === 'transcript_done') {
+    handleTranscriptEvent(data);
+    return;
+  }
+
+  if (data.type === 'user_transcript_done') {
+    handleTranscriptEvent(data);
+    return;
+  }
+}
+
+// Transcript handling
+let currentTranscriptEl = null;
+let currentTranscriptRole = null;
+
+function handleTranscriptEvent(data) {
+  const { type, text, role } = data;
+
+  if (type === 'transcript_delta') {
+    // Streaming assistant transcript
+    if (!currentTranscriptEl || currentTranscriptRole !== role) {
+      if (ui.transcriptEmpty) ui.transcriptEmpty.remove();
+      currentTranscriptEl = document.createElement('div');
+      currentTranscriptEl.className = 'line streaming';
+      currentTranscriptEl.textContent = 'Assistant: ';
+      ui.transcriptEl.appendChild(currentTranscriptEl);
+      currentTranscriptRole = role;
+    }
+    currentTranscriptEl.textContent += text;
+    ui.transcriptEl.scrollTop = ui.transcriptEl.scrollHeight;
+  } else if (type === 'transcript_done') {
+    // Final assistant transcript
+    if (currentTranscriptEl && currentTranscriptRole === 'assistant') {
+      currentTranscriptEl.classList.remove('streaming');
+      currentTranscriptEl.textContent = 'Assistant: ' + text;
+    } else {
+      appendTranscript(text, 'assistant');
+    }
+    currentTranscriptEl = null;
+    currentTranscriptRole = null;
+  } else if (type === 'user_transcript_done') {
+    // User's speech transcribed
+    appendTranscript(text, 'user');
+    currentTranscriptEl = null;
+    currentTranscriptRole = null;
+  }
+}
+
+function handleThreadEvent(event) {
+  if (!event) return;
+
+  switch (event.type) {
+    case 'thread.started':
+      setCodexStatus('running', 'Thread: ' + (event.thread_id || '...').slice(0, 12));
+      appendCodexLine('🚀 Thread started', 'info');
+      break;
+
+    case 'turn.started':
+      setCodexStatus('running', 'Processing...');
+      break;
+
+    case 'turn.completed':
+      setCodexStatus('connected', 'Ready');
+      break;
+
+    case 'item.started':
+      if (event.item?.type === 'function_call') {
+        appendCodexLine('⚙️ Calling: ' + (event.item.name || 'function'), 'function');
+      } else if (event.item?.type === 'agent_message') {
+        setCodexStatus('running', 'Agent thinking...');
+      } else if (event.item?.type === 'command_execution') {
+        const cmd = event.item.command || 'command';
+        appendCodexLine('💻 Running: ' + cmd, 'function');
+      }
+      break;
+
+    case 'item.streaming':
+      // Update streaming content
+      if (event.item?.type === 'agent_message' && event.item.text) {
+        updateStreamingMessage(event.item.text);
+      } else if (event.item?.type === 'function_call') {
+        updateStreamingFunction(event.item);
+      }
+      break;
+
+    case 'item.completed':
+      if (event.item?.type === 'agent_message') {
+        finalizeStreamingMessage(event.item.text || '');
+        setCodexStatus('connected', 'Ready');
+      } else if (event.item?.type === 'function_call') {
+        appendCodexLine('✅ ' + (event.item.name || 'function') + ' completed', 'success');
+      } else if (event.item?.type === 'function_call_output') {
+        const output = event.item.output || '';
+        if (output.length > 200) {
+          appendCodexLine('📤 Output: ' + output.slice(0, 200) + '...', 'output');
+        } else if (output) {
+          appendCodexLine('📤 Output: ' + output, 'output');
+        }
+      } else if (event.item?.type === 'reasoning') {
+        const text = event.item.text || '';
+        if (text) {
+          appendCodexLine('💭 ' + text.slice(0, 200) + (text.length > 200 ? '...' : ''), 'agent');
+        }
+      } else if (event.item?.type === 'command_execution') {
+        const cmd = event.item.command || 'command';
+        const output = event.item.aggregated_output || '';
+        const exitCode = event.item.exit_code;
+        const status = exitCode === 0 ? 'success' : (exitCode === null ? 'info' : 'error');
+        appendCodexLine('✅ ' + cmd, status);
+        if (output) {
+          const truncated = output.length > 300 ? output.slice(0, 300) + '...' : output;
+          appendCodexLine('📤 ' + truncated, 'output');
+        }
+      }
+      break;
+
+    default:
+      // Log other events for debugging
+      console.log('[FRONTEND] Unhandled thread event:', event.type, event);
+  }
+}
+
+let currentStreamingEl = null;
+
+function updateStreamingMessage(text) {
+  if (!currentStreamingEl) {
+    currentStreamingEl = document.createElement('div');
+    currentStreamingEl.className = 'codex-line streaming agent';
+    if (ui.codexEmpty) ui.codexEmpty.remove();
+    ui.codexOutput.appendChild(currentStreamingEl);
+  }
+  currentStreamingEl.textContent = '💭 ' + text;
+  ui.codexOutput.scrollTop = ui.codexOutput.scrollHeight;
+}
+
+function updateStreamingFunction(item) {
+  if (!currentStreamingEl || !currentStreamingEl.classList.contains('function-stream')) {
+    currentStreamingEl = document.createElement('div');
+    currentStreamingEl.className = 'codex-line streaming function-stream';
+    if (ui.codexEmpty) ui.codexEmpty.remove();
+    ui.codexOutput.appendChild(currentStreamingEl);
+  }
+  let display = '⚙️ ' + (item.name || 'function');
+  if (item.arguments) {
+    try {
+      const args = typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments);
+      if (args.length > 100) {
+        display += ': ' + args.slice(0, 100) + '...';
+      } else {
+        display += ': ' + args;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+  currentStreamingEl.textContent = display;
+  ui.codexOutput.scrollTop = ui.codexOutput.scrollHeight;
+}
+
+function finalizeStreamingMessage(text) {
+  if (currentStreamingEl) {
+    currentStreamingEl.classList.remove('streaming');
+    currentStreamingEl.textContent = '🤖 ' + text;
+  }
+  currentStreamingEl = null;
+}
+
+function appendCodexLine(text, type = 'info') {
+  if (!ui.codexOutput) return;
+  if (ui.codexEmpty) ui.codexEmpty.remove();
+
+  // Finalize any streaming element first
+  if (currentStreamingEl) {
+    currentStreamingEl.classList.remove('streaming');
+    currentStreamingEl = null;
+  }
+
+  const line = document.createElement('div');
+  line.className = 'codex-line ' + type;
+  line.textContent = text;
+  ui.codexOutput.appendChild(line);
+  ui.codexOutput.scrollTop = ui.codexOutput.scrollHeight;
+}
+
+function clearCodexOutput() {
+  if (!ui.codexOutput) return;
+  ui.codexOutput.innerHTML = '<div class="codex-line empty" id="codexEmpty">Waiting for Codex activity...</div>';
+  currentStreamingEl = null;
+}
+
+// Auto-connect to Codex events on page load
+connectCodexEvents();

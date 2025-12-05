@@ -91,7 +91,7 @@ test.describe('WebRTC Bridge - Interactive Debug Session', () => {
     await page.goto('http://localhost:8080');
 
     // Verify page loaded
-    await expect(page.locator('h1')).toContainText('WebRTC ↔ OpenAI Voice Bridge');
+    await expect(page.locator('h1')).toContainText('Realtime Voice Bridge');
     console.log('\x1b[32m[SUCCESS]\x1b[0m Page loaded successfully\n');
 
     // Check that the start button exists

@@ -102,6 +102,9 @@ export async function runCodex(prompt: string): Promise<CodexRunResult> {
 
   try {
     for await (const event of events) {
+      // Log ALL events for debugging
+      console.log('[CODEX] Event:', event.type, JSON.stringify(event).slice(0, 300));
+
       if (event.type === 'thread.started') {
         lastThreadId = event.thread_id;
         console.log('[CODEX] Thread started:', lastThreadId);
