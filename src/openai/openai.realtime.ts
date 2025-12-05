@@ -512,7 +512,7 @@ Be conversational and friendly. Always explain what the coding assistant found i
       case 'error':
         console.error('[OPENAI-REALTIME] Error event received:', payload.error?.message || payload);
         if (payload.response_id && textResponseTrackers.has(payload.response_id)) {
-          flushTracker(payload.response_id, new Error(payload.error?.message ?? 'Erro na resposta Realtime'));
+          flushTracker(payload.response_id, new Error(payload.error?.message ?? 'Realtime response error'));
         }
         break;
       default:
@@ -535,7 +535,7 @@ Be conversational and friendly. Always explain what the coding assistant found i
 
   const channelTimeout = setTimeout(() => {
     console.error('[OPENAI-REALTIME] Data channel timeout - failed to open within 10 seconds');
-    readyReject(new Error('Timeout ao aguardar canal de dados Realtime'));
+    readyReject(new Error('Timeout waiting for Realtime data channel'));
   }, 10_000);
 
   const handleOpen = () => {
@@ -543,7 +543,7 @@ Be conversational and friendly. Always explain what the coding assistant found i
     clearTimeout(channelTimeout);
     channelOpened = true;
 
-    console.log('[OPENAI-REALTIME] Sending session.update with system prompt, modalities, and Codex tools');
+    console.log('[OPENAI-REALTIME] Sending session.update with system prompt, modalities, and tools');
     const sessionUpdate = {
       type: 'session.update',
       session: {
@@ -588,15 +588,6 @@ Be conversational and friendly. Always explain what the coding assistant found i
     };
     dataChannel.send(JSON.stringify(sessionUpdate));
 
-    console.log('[OPENAI-REALTIME] Sending response.create for initial greeting');
-    const initialResponse = {
-      type: 'response.create',
-      response: {
-        instructions: 'Inicie a conversa com uma breve saudação e convide a pessoa a falar.',
-      },
-    };
-    dataChannel.send(JSON.stringify(initialResponse));
-
     console.log('[OPENAI-REALTIME] Initial setup complete - channel ready for use');
     readyResolve();
   };
@@ -605,7 +596,7 @@ Be conversational and friendly. Always explain what the coding assistant found i
     console.error('[OPENAI-REALTIME] Data channel error event:', event);
     if (!channelOpened) {
       clearTimeout(channelTimeout);
-      readyReject(new Error('Erro ao estabelecer canal de dados Realtime'));
+      readyReject(new Error('Error establishing Realtime data channel'));
     }
   };
 
@@ -698,7 +689,7 @@ Be conversational and friendly. Always explain what the coding assistant found i
   const sendEvent = (event: Record<string, unknown>) => {
     if (!channelOpened) {
       console.error('[OPENAI-REALTIME] Attempted to send event before channel opened:', event.type);
-      throw new Error('Canal de dados Realtime ainda não está pronto');
+      throw new Error('Realtime data channel not ready yet');
     }
     console.log('[OPENAI-REALTIME] Sending event:', event.type);
     dataChannel.send(JSON.stringify(event));
@@ -706,7 +697,7 @@ Be conversational and friendly. Always explain what the coding assistant found i
 
   const waitForTextResponse = (responseId: string, timeoutMs = 10_000): Promise<string> => {
     if (!channelOpened) {
-      return Promise.reject(new Error('Canal de dados Realtime ainda não está pronto'));
+      return Promise.reject(new Error('Realtime data channel not ready yet'));
     }
 
     return new Promise<string>((resolve, reject) => {
@@ -715,7 +706,7 @@ Be conversational and friendly. Always explain what the coding assistant found i
         resolve,
         reject,
         timeout: setTimeout(() => {
-          flushTracker(responseId, new Error(`Timeout ao aguardar resposta ${responseId}`));
+          flushTracker(responseId, new Error(`Timeout waiting for response ${responseId}`));
         }, timeoutMs),
       };
 
@@ -735,7 +726,7 @@ Be conversational and friendly. Always explain what the coding assistant found i
       console.log('[OPENAI-REALTIME] Clearing', textResponseTrackers.size, 'pending text response trackers');
       for (const [responseId, tracker] of textResponseTrackers.entries()) {
         if (tracker.timeout) clearTimeout(tracker.timeout);
-        tracker.reject(new Error(`Sessão encerrada antes de concluir a resposta ${responseId}`));
+        tracker.reject(new Error(`Session closed before completing response ${responseId}`));
       }
       textResponseTrackers.clear();
       console.log('[OPENAI-REALTIME] Closing peer connection');
