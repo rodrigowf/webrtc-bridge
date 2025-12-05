@@ -397,14 +397,16 @@ function handleThreadEvent(event) {
       } else if (event.item?.type === 'function_call_output') {
         const output = event.item.output || '';
         if (output.length > 200) {
-          appendCodexLine('📤 Output: ' + output.slice(0, 200) + '...', 'output');
+          appendCodexLine('📤 Output: ' + output.slice(0, 200) + '...', 'output', '📤 Output: ' + output);
         } else if (output) {
           appendCodexLine('📤 Output: ' + output, 'output');
         }
       } else if (event.item?.type === 'reasoning') {
         const text = event.item.text || '';
         if (text) {
-          appendCodexLine('💭 ' + text.slice(0, 200) + (text.length > 200 ? '...' : ''), 'agent');
+          const truncated = '💭 ' + text.slice(0, 200) + (text.length > 200 ? '...' : '');
+          const full = '💭 ' + text;
+          appendCodexLine(truncated, 'agent', text.length > 200 ? full : null);
         }
       } else if (event.item?.type === 'command_execution') {
         const cmd = event.item.command || 'command';
@@ -413,8 +415,9 @@ function handleThreadEvent(event) {
         const status = exitCode === 0 ? 'success' : (exitCode === null ? 'info' : 'error');
         appendCodexLine('✅ ' + cmd, status);
         if (output) {
-          const truncated = output.length > 300 ? output.slice(0, 300) + '...' : output;
-          appendCodexLine('📤 ' + truncated, 'output');
+          const truncated = output.length > 300 ? '📤 ' + output.slice(0, 300) + '...' : '📤 ' + output;
+          const full = '📤 ' + output;
+          appendCodexLine(truncated, 'output', output.length > 300 ? full : null);
         }
       }
       break;
@@ -465,12 +468,35 @@ function updateStreamingFunction(item) {
 function finalizeStreamingMessage(text) {
   if (currentStreamingEl) {
     currentStreamingEl.classList.remove('streaming');
-    currentStreamingEl.textContent = '🤖 ' + text;
+    const truncateAt = 300;
+    if (text.length > truncateAt) {
+      const truncated = '🤖 ' + text.slice(0, truncateAt) + '...';
+      const full = '🤖 ' + text;
+      currentStreamingEl.textContent = truncated;
+      currentStreamingEl.classList.add('expandable');
+      currentStreamingEl.dataset.truncated = truncated;
+      currentStreamingEl.dataset.full = full;
+      currentStreamingEl.dataset.expanded = 'false';
+      currentStreamingEl.addEventListener('click', function handler() {
+        const isExpanded = this.dataset.expanded === 'true';
+        if (isExpanded) {
+          this.textContent = this.dataset.truncated;
+          this.dataset.expanded = 'false';
+          this.classList.remove('expanded');
+        } else {
+          this.textContent = this.dataset.full;
+          this.dataset.expanded = 'true';
+          this.classList.add('expanded');
+        }
+      });
+    } else {
+      currentStreamingEl.textContent = '🤖 ' + text;
+    }
   }
   currentStreamingEl = null;
 }
 
-function appendCodexLine(text, type = 'info') {
+function appendCodexLine(text, type = 'info', fullText = null) {
   if (!ui.codexOutput) return;
   if (ui.codexEmpty) ui.codexEmpty.remove();
 
@@ -483,6 +509,27 @@ function appendCodexLine(text, type = 'info') {
   const line = document.createElement('div');
   line.className = 'codex-line ' + type;
   line.textContent = text;
+
+  // If fullText is provided and different from text, make it expandable
+  if (fullText && fullText !== text) {
+    line.classList.add('expandable');
+    line.dataset.truncated = text;
+    line.dataset.full = fullText;
+    line.dataset.expanded = 'false';
+    line.addEventListener('click', () => {
+      const isExpanded = line.dataset.expanded === 'true';
+      if (isExpanded) {
+        line.textContent = line.dataset.truncated;
+        line.dataset.expanded = 'false';
+        line.classList.remove('expanded');
+      } else {
+        line.textContent = line.dataset.full;
+        line.dataset.expanded = 'true';
+        line.classList.add('expanded');
+      }
+    });
+  }
+
   ui.codexOutput.appendChild(line);
   ui.codexOutput.scrollTop = ui.codexOutput.scrollHeight;
 }

@@ -175,6 +175,22 @@
         animation: pulse 1.5s ease-in-out infinite;
         border-style: dashed;
       }
+      .codex-line.expandable {
+        cursor: pointer;
+        position: relative;
+      }
+      .codex-line.expandable::after {
+        content: ' ▶';
+        font-size: 10px;
+        opacity: 0.5;
+        margin-left: 4px;
+      }
+      .codex-line.expandable.expanded::after {
+        content: ' ▼';
+      }
+      .codex-line.expandable:hover {
+        background: rgba(255, 255, 255, 0.06);
+      }
       @keyframes pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.6; }
