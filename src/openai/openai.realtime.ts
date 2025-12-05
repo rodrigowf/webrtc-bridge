@@ -1,14 +1,12 @@
 import axios from 'axios';
-import { RTCPeerConnection } from 'wrtc';
-import type { MediaStreamTrack, RTCRtpReceiver, RTCDataChannel } from 'wrtc';
+import wrtc, { type MediaStreamTrack, type RTCRtpReceiver, type RTCDataChannel, type RTCPeerConnection } from 'wrtc';
+import { env } from '../config.env.js';
+import { runCodex } from '../codex/codex.service.js';
+import { loadContextMemory, recordMemoryRun } from '../memory/context.memory.js';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { RTCAudioSink, RTCAudioSource } = require('wrtc').nonstandard;
-
+const RTCPeerConnectionClass = wrtc.RTCPeerConnection;
+const { RTCAudioSink, RTCAudioSource } = wrtc.nonstandard;
 type RTCAudioSinkEvent = { samples: Int16Array };
-
-import { env } from '../config.env';
-import { runCodex } from '../codex/codex.service';
 
 export type RealtimeAudioFrame = RTCAudioSinkEvent;
 
@@ -54,7 +52,19 @@ export type RealtimeSession = {
 
 export async function connectRealtimeSession(): Promise<RealtimeSession> {
   console.log('[OPENAI-REALTIME] connectRealtimeSession called');
+  let contextMemory = '';
+  try {
+    contextMemory = await loadContextMemory();
+    await recordMemoryRun('Started OpenAI Realtime session (voice bridge)');
+  } catch (err) {
+    console.error('[OPENAI-REALTIME] Failed to load or update context memory:', err);
+    contextMemory = 'Context memory unavailable (read/write error).';
+  }
+
   const systemPrompt = `You are a helpful voice assistant with access to Codex, an AI coding assistant.
+
+Persistent context memory from CONTEXT_MEMORY.md:
+${contextMemory}
 
 You can help users with:
 - Voice conversations and general questions
@@ -68,7 +78,7 @@ Be conversational and friendly. Always explain what Codex found in a clear, natu
   console.log('[OPENAI-REALTIME] System prompt:', systemPrompt);
 
   console.log('[OPENAI-REALTIME] Creating RTCPeerConnection for OpenAI');
-  const pc = new RTCPeerConnection({
+  const pc = new RTCPeerConnectionClass({
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require',
   });
