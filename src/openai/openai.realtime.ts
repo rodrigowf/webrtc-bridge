@@ -2,6 +2,7 @@ import axios from 'axios';
 import wrtc, { type MediaStreamTrack, type RTCRtpReceiver, type RTCDataChannel, type RTCPeerConnection } from 'wrtc';
 import { env } from '../config.env.js';
 import { runCodex, subscribeCodexEvents } from '../codex/codex.service.js';
+import { runClaude } from '../claude/claude.service.js';
 import { loadContextMemory, recordMemoryRun } from '../memory/context.memory.js';
 
 const RTCPeerConnectionClass = wrtc.RTCPeerConnection;
@@ -88,20 +89,26 @@ export async function connectRealtimeSession(): Promise<RealtimeSession> {
     contextMemory = 'Context memory unavailable (read/write error).';
   }
 
-  const systemPrompt = `You are a helpful voice assistant with access to Codex, an AI coding assistant.
+  const systemPrompt = `You are a helpful voice assistant with access to two AI coding assistants: Codex (OpenAI) and Claude Code (Anthropic).
 
 Persistent context memory from CONTEXT_MEMORY.md:
 ${contextMemory}
 
 You can help users with:
 - Voice conversations and general questions
-- Code analysis and understanding (use run_codex function)
-- Finding and reading files in the codebase (use run_codex function)
-- Explaining how code works (use run_codex function)
-- Searching for patterns or TODO items (use run_codex function)
+- Code analysis and understanding (use run_codex or run_claude function)
+- Finding and reading files in the codebase (use run_codex or run_claude function)
+- Explaining how code works (use run_codex or run_claude function)
+- Searching for patterns or TODO items (use run_codex or run_claude function)
+- Complex multi-step coding tasks (use run_claude for more complex tasks)
 
-When a user asks about code, files, or development tasks, use the run_codex function to analyze the codebase.
-Be conversational and friendly. Always explain what Codex found in a clear, natural way.`;
+When a user asks about code, files, or development tasks:
+- Use run_codex for quick code analysis and simple tasks
+- Use run_claude for complex multi-step tasks, refactoring, or when deeper analysis is needed
+- If the user explicitly asks for Claude or Claude Code, use run_claude
+- If the user explicitly asks for Codex, use run_codex
+
+Be conversational and friendly. Always explain what the coding assistant found in a clear, natural way.`;
   console.log('[OPENAI-REALTIME] System prompt:', systemPrompt);
 
   console.log('[OPENAI-REALTIME] Creating RTCPeerConnection for OpenAI');
@@ -217,23 +224,27 @@ Be conversational and friendly. Always explain what Codex found in a clear, natu
 
         console.log('[OPENAI-REALTIME] Function call arguments complete:', functionName, 'callId:', callId);
 
-        if (functionName === 'run_codex') {
-          let codexPrompt: string | null = null;
-
-          if (typeof rawArgs === 'string') {
+        // Helper to extract prompt from various argument formats
+        const extractPrompt = (args: unknown): string | null => {
+          if (typeof args === 'string') {
             try {
-              const parsed = JSON.parse(rawArgs);
+              const parsed = JSON.parse(args);
               if (typeof parsed === 'string') {
-                codexPrompt = parsed;
+                return parsed;
               } else if (parsed && typeof parsed === 'object' && typeof parsed.prompt === 'string') {
-                codexPrompt = parsed.prompt;
+                return parsed.prompt;
               }
             } catch {
-              codexPrompt = rawArgs;
+              return args;
             }
-          } else if (rawArgs && typeof rawArgs === 'object' && typeof rawArgs.prompt === 'string') {
-            codexPrompt = rawArgs.prompt;
+          } else if (args && typeof args === 'object' && typeof (args as any).prompt === 'string') {
+            return (args as any).prompt;
           }
+          return null;
+        };
+
+        if (functionName === 'run_codex') {
+          const codexPrompt = extractPrompt(rawArgs);
 
           if (!codexPrompt) {
             console.error('[OPENAI-REALTIME] run_codex called without a valid prompt, raw args:', rawArgs);
@@ -274,10 +285,7 @@ Be conversational and friendly. Always explain what Codex found in a clear, natu
               dataChannel.send(JSON.stringify(functionResult));
 
               // Trigger assistant to respond with the result
-              const responseCreate = {
-                type: 'response.create',
-              };
-              dataChannel.send(JSON.stringify(responseCreate));
+              dataChannel.send(JSON.stringify({ type: 'response.create' }));
             } catch (err: any) {
               console.error('[OPENAI-REALTIME] Error executing Codex:', err);
               const errorResult = {
@@ -289,11 +297,64 @@ Be conversational and friendly. Always explain what Codex found in a clear, natu
                 },
               };
               dataChannel.send(JSON.stringify(errorResult));
+              dataChannel.send(JSON.stringify({ type: 'response.create' }));
+            }
+          })();
+        } else if (functionName === 'run_claude') {
+          const claudePrompt = extractPrompt(rawArgs);
 
-              const responseCreate = {
-                type: 'response.create',
+          if (!claudePrompt) {
+            console.error('[OPENAI-REALTIME] run_claude called without a valid prompt, raw args:', rawArgs);
+            const errorResult = {
+              type: 'conversation.item.create',
+              item: {
+                type: 'function_call_output',
+                call_id: callId,
+                output: JSON.stringify({ error: 'Claude prompt was missing or invalid.' }),
+              },
+            };
+            dataChannel.send(JSON.stringify(errorResult));
+            dataChannel.send(JSON.stringify({ type: 'response.create' }));
+            break;
+          }
+
+          console.log('[OPENAI-REALTIME] Executing Claude with prompt:', claudePrompt.slice(0, 160));
+
+          // Execute Claude asynchronously and send result back
+          (async () => {
+            try {
+              const result = await runClaude(claudePrompt);
+              const output = result.status === 'ok'
+                ? result.finalResponse || 'Claude execution completed but no response was generated.'
+                : `Claude error: ${result.error || 'Unknown error'}`;
+
+              console.log('[OPENAI-REALTIME] Claude execution completed, sending result back to assistant');
+
+              // Send function call result back to assistant
+              const functionResult = {
+                type: 'conversation.item.create',
+                item: {
+                  type: 'function_call_output',
+                  call_id: callId,
+                  output: JSON.stringify({ result: output }),
+                },
               };
-              dataChannel.send(JSON.stringify(responseCreate));
+              dataChannel.send(JSON.stringify(functionResult));
+
+              // Trigger assistant to respond with the result
+              dataChannel.send(JSON.stringify({ type: 'response.create' }));
+            } catch (err: any) {
+              console.error('[OPENAI-REALTIME] Error executing Claude:', err);
+              const errorResult = {
+                type: 'conversation.item.create',
+                item: {
+                  type: 'function_call_output',
+                  call_id: callId,
+                  output: JSON.stringify({ error: err?.message || 'Failed to execute Claude' }),
+                },
+              };
+              dataChannel.send(JSON.stringify(errorResult));
+              dataChannel.send(JSON.stringify({ type: 'response.create' }));
             }
           })();
         }
@@ -383,13 +444,28 @@ Be conversational and friendly. Always explain what Codex found in a clear, natu
           {
             type: 'function',
             name: 'run_codex',
-            description: 'Run Codex AI assistant to analyze code, search files, read documentation, or perform complex coding tasks. Codex has full access to the codebase and can read, search, and analyze files. Use this when the user asks to analyze code, find files, read documentation, or perform any development task.',
+            description: 'Run Codex AI assistant (OpenAI) to analyze code, search files, read documentation, or perform quick coding tasks. Use for simple code analysis and quick file searches.',
             parameters: {
               type: 'object',
               properties: {
                 prompt: {
                   type: 'string',
                   description: 'The task or question for Codex. Be specific about what you want Codex to do (e.g., "analyze the browser-bridge.ts file", "find all TODO comments", "explain how the WebRTC connection works").',
+                },
+              },
+              required: ['prompt'],
+            },
+          },
+          {
+            type: 'function',
+            name: 'run_claude',
+            description: 'Run Claude Code AI assistant (Anthropic) for complex multi-step coding tasks, refactoring, deep code analysis, or when the user explicitly asks for Claude. Use for more complex tasks requiring deeper reasoning.',
+            parameters: {
+              type: 'object',
+              properties: {
+                prompt: {
+                  type: 'string',
+                  description: 'The task or question for Claude Code. Be specific about what you want Claude to do (e.g., "refactor this function for better performance", "implement a new feature", "debug this complex issue").',
                 },
               },
               required: ['prompt'],

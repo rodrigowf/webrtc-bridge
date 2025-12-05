@@ -319,8 +319,10 @@
       <div class="panel tabbed-panel">
         <div class="tab-header">
           <button class="tab-btn active" data-tab="transcript">Transcriptions</button>
-          <button class="tab-btn" data-tab="codex">Codex Activity</button>
-          <span id="codexStatus" class="tab-status idle">Connecting...</span>
+          <button class="tab-btn" data-tab="codex">Codex</button>
+          <button class="tab-btn" data-tab="claude">Claude</button>
+          <span id="codexStatus" class="tab-status idle">Codex</span>
+          <span id="claudeStatus" class="tab-status idle">Claude</span>
         </div>
         <div id="tabTranscript" class="tab-content active">
           <div id="transcript" class="transcript">
@@ -330,6 +332,11 @@
         <div id="tabCodex" class="tab-content">
           <div id="codexOutput" class="codex-output">
             <div class="codex-line empty" id="codexEmpty">Waiting for Codex activity...</div>
+          </div>
+        </div>
+        <div id="tabClaude" class="tab-content">
+          <div id="claudeOutput" class="codex-output">
+            <div class="codex-line empty" id="claudeEmpty">Waiting for Claude activity...</div>
           </div>
         </div>
       </div>

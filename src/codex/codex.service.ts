@@ -74,7 +74,7 @@ async function ensureThread(): Promise<Thread> {
       sandboxMode: 'workspace-write',
       approvalPolicy: 'never',
       networkAccessEnabled: true,
-    });
+    } as any);
   }
   return currentThread;
 }
@@ -96,7 +96,7 @@ export async function runCodex(prompt: string): Promise<CodexRunResult> {
   currentAbort = abortController;
 
   console.log('[CODEX] Starting streamed run...');
-  const { events } = await thread.runStreamed(prompt, { signal: abortController.signal });
+  const { events } = await thread.runStreamed(prompt, { signal: abortController.signal } as any);
   const items: ThreadEvent[] = [];
   let finalResponse = '';
 

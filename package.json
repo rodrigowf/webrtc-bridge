@@ -10,14 +10,15 @@
     "build": "tsc -p .",
     "start": "node dist/server.js",
     "dev": "npm run build && node dist/server.js",
-    "test": "vitest run tests/health.test.ts tests/codex.service.test.ts tests/codex.sse.test.ts",
-    "test:unit": "vitest run tests/health.test.ts tests/codex.service.test.ts tests/codex.sse.test.ts",
+    "test": "vitest run tests/health.test.ts tests/codex.service.test.ts tests/codex.sse.test.ts tests/claude.service.test.ts tests/claude.sse.test.ts",
+    "test:unit": "vitest run tests/health.test.ts tests/codex.service.test.ts tests/codex.sse.test.ts tests/claude.service.test.ts tests/claude.sse.test.ts",
     "test:e2e": "playwright test tests/interactive.e2e.test.ts --headed",
     "test:e2e:debug": "playwright test tests/interactive.e2e.test.ts --headed --debug",
     "test:interactive": "npm run test:e2e"
   },
   "dependencies": {
-    "@openai/codex-sdk": "^0.2.1",
+    "@anthropic-ai/claude-agent-sdk": "^0.1.6",
+    "@openai/codex-sdk": "^0.47.0",
     "axios": "^1.7.7",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",

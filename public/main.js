@@ -12,9 +12,13 @@ const ui = {
   codexOutput: document.getElementById('codexOutput'),
   codexEmpty: document.getElementById('codexEmpty'),
   codexStatus: document.getElementById('codexStatus'),
+  claudeOutput: document.getElementById('claudeOutput'),
+  claudeEmpty: document.getElementById('claudeEmpty'),
+  claudeStatus: document.getElementById('claudeStatus'),
   tabButtons: document.querySelectorAll('.tab-btn'),
   tabTranscript: document.getElementById('tabTranscript'),
   tabCodex: document.getElementById('tabCodex'),
+  tabClaude: document.getElementById('tabClaude'),
 };
 
 const state = {
@@ -278,13 +282,20 @@ function setCodexStatus(state, text) {
 
 function handleCodexEvent(data) {
   if (data.type === 'connected') {
-    setCodexStatus('connected', 'Connected');
+    setCodexStatus('connected', 'Codex');
+    setClaudeStatus('connected', 'Claude');
+    return;
+  }
+
+  // Handle Claude-specific events (they have source: 'claude')
+  if (data.source === 'claude') {
+    handleClaudeEvent(data);
     return;
   }
 
   if (data.type === 'thread_reset') {
     clearCodexOutput();
-    setCodexStatus('idle', 'Thread reset');
+    setCodexStatus('idle', 'Reset');
     return;
   }
 
@@ -315,6 +326,171 @@ function handleCodexEvent(data) {
     handleTranscriptEvent(data);
     return;
   }
+}
+
+// --- Claude Event Handling ---
+function setClaudeStatus(state, text) {
+  if (!ui.claudeStatus) return;
+  ui.claudeStatus.textContent = text;
+  ui.claudeStatus.className = 'tab-status ' + state;
+}
+
+function handleClaudeEvent(data) {
+  if (data.type === 'session_started') {
+    setClaudeStatus('running', 'Running...');
+    appendClaudeLine('🚀 Session started: ' + (data.payload?.session_id || '...'), 'info');
+    return;
+  }
+
+  if (data.type === 'session_completed') {
+    setClaudeStatus('connected', 'Ready');
+    return;
+  }
+
+  if (data.type === 'session_reset') {
+    clearClaudeOutput();
+    setClaudeStatus('idle', 'Reset');
+    return;
+  }
+
+  if (data.type === 'turn_aborted') {
+    appendClaudeLine('⚠️ Aborted: ' + (data.payload?.reason || 'cancelled'), 'warning');
+    setClaudeStatus('idle', 'Aborted');
+    return;
+  }
+
+  if (data.type === 'turn_error') {
+    appendClaudeLine('❌ Error: ' + (data.payload?.message || 'unknown error'), 'error');
+    setClaudeStatus('error', 'Error');
+    return;
+  }
+
+  if (data.type === 'message') {
+    handleClaudeMessage(data.payload);
+    return;
+  }
+}
+
+let currentClaudeStreamingEl = null;
+
+function handleClaudeMessage(message) {
+  if (!message) return;
+
+  switch (message.type) {
+    case 'user':
+      // User message - show the prompt
+      const userText = message.message?.content?.[0]?.text || '';
+      if (userText) {
+        appendClaudeLine('👤 ' + userText.slice(0, 200) + (userText.length > 200 ? '...' : ''), 'info');
+      }
+      break;
+
+    case 'assistant':
+      // Assistant message with content blocks
+      setClaudeStatus('running', 'Thinking...');
+      const content = message.message?.content || [];
+      for (const block of content) {
+        if (block.type === 'text') {
+          finalizeClaudeStreamingMessage(block.text);
+        } else if (block.type === 'tool_use') {
+          appendClaudeLine('⚙️ Tool: ' + block.name, 'function');
+          if (block.input) {
+            const inputStr = typeof block.input === 'string' ? block.input : JSON.stringify(block.input);
+            if (inputStr.length > 100) {
+              appendClaudeLine('📥 ' + inputStr.slice(0, 100) + '...', 'output', '📥 ' + inputStr);
+            }
+          }
+        }
+      }
+      break;
+
+    case 'result':
+      // Final result
+      setClaudeStatus('connected', 'Ready');
+      if (message.result) {
+        const resultText = typeof message.result === 'string' ? message.result : JSON.stringify(message.result);
+        if (resultText.length > 300) {
+          appendClaudeLine('✅ ' + resultText.slice(0, 300) + '...', 'success', '✅ ' + resultText);
+        } else {
+          appendClaudeLine('✅ ' + resultText, 'success');
+        }
+      }
+      break;
+
+    default:
+      console.log('[FRONTEND] Unhandled Claude message type:', message.type, message);
+  }
+}
+
+function updateClaudeStreamingMessage(text) {
+  if (!currentClaudeStreamingEl) {
+    currentClaudeStreamingEl = document.createElement('div');
+    currentClaudeStreamingEl.className = 'codex-line streaming agent';
+    if (ui.claudeEmpty) ui.claudeEmpty.remove();
+    ui.claudeOutput.appendChild(currentClaudeStreamingEl);
+  }
+  currentClaudeStreamingEl.textContent = '💭 ' + text;
+  ui.claudeOutput.scrollTop = ui.claudeOutput.scrollHeight;
+}
+
+function finalizeClaudeStreamingMessage(text) {
+  if (currentClaudeStreamingEl) {
+    currentClaudeStreamingEl.classList.remove('streaming');
+    currentClaudeStreamingEl = null;
+  }
+
+  const truncateAt = 300;
+  if (text.length > truncateAt) {
+    const truncated = '🤖 ' + text.slice(0, truncateAt) + '...';
+    const full = '🤖 ' + text;
+    appendClaudeLine(truncated, 'agent', full);
+  } else {
+    appendClaudeLine('🤖 ' + text, 'agent');
+  }
+}
+
+function appendClaudeLine(text, type = 'info', fullText = null) {
+  if (!ui.claudeOutput) return;
+  if (ui.claudeEmpty) ui.claudeEmpty.remove();
+
+  // Finalize any streaming element first
+  if (currentClaudeStreamingEl) {
+    currentClaudeStreamingEl.classList.remove('streaming');
+    currentClaudeStreamingEl = null;
+  }
+
+  const line = document.createElement('div');
+  line.className = 'codex-line ' + type;
+  line.textContent = text;
+
+  // If fullText is provided and different from text, make it expandable
+  if (fullText && fullText !== text) {
+    line.classList.add('expandable');
+    line.dataset.truncated = text;
+    line.dataset.full = fullText;
+    line.dataset.expanded = 'false';
+    line.addEventListener('click', () => {
+      const isExpanded = line.dataset.expanded === 'true';
+      if (isExpanded) {
+        line.textContent = line.dataset.truncated;
+        line.dataset.expanded = 'false';
+        line.classList.remove('expanded');
+      } else {
+        line.textContent = line.dataset.full;
+        line.dataset.expanded = 'true';
+        line.classList.add('expanded');
+      }
+    });
+  }
+
+  ui.claudeOutput.appendChild(line);
+  ui.claudeOutput.scrollTop = ui.claudeOutput.scrollHeight;
+}
+
+function clearClaudeOutput() {
+  if (!ui.claudeOutput) return;
+  ui.claudeOutput.innerHTML = '<div class="codex-line empty" id="claudeEmpty">Waiting for Claude activity...</div>';
+  currentClaudeStreamingEl = null;
 }
 
 // Transcript handling
@@ -558,12 +734,16 @@ function switchTab(tabName) {
   });
 
   // Update content visibility
+  ui.tabTranscript.classList.remove('active');
+  ui.tabCodex.classList.remove('active');
+  ui.tabClaude.classList.remove('active');
+
   if (tabName === 'transcript') {
     ui.tabTranscript.classList.add('active');
-    ui.tabCodex.classList.remove('active');
   } else if (tabName === 'codex') {
     ui.tabCodex.classList.add('active');
-    ui.tabTranscript.classList.remove('active');
+  } else if (tabName === 'claude') {
+    ui.tabClaude.classList.add('active');
   }
 }
 

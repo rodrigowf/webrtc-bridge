@@ -11,6 +11,13 @@ import {
   subscribeCodexEvents,
   getCurrentThreadId,
 } from './codex/codex.service.js';
+import {
+  runClaude,
+  stopClaude,
+  resetClaude,
+  subscribeClaudeEvents,
+  getCurrentSessionId,
+} from './claude/claude.service.js';
 import { subscribeTranscriptEvents } from './openai/openai.realtime.js';
 
 // ESM equivalent of __dirname
@@ -110,6 +117,65 @@ app.get('/codex/status', (_req, res) => {
   }
 });
 
+// Claude Code endpoints
+app.post('/claude/run', async (req, res) => {
+  console.log('[SERVER] /claude/run endpoint called');
+  const { prompt } = req.body ?? {};
+  if (!prompt || typeof prompt !== 'string') {
+    console.error('[SERVER] Invalid request: missing or invalid prompt');
+    return res.status(400).json({ error: 'Missing prompt' });
+  }
+
+  try {
+    console.log('[SERVER] Calling runClaude with prompt length:', prompt.length);
+    const result = await runClaude(prompt);
+    console.log('[SERVER] Claude run completed with status:', result.status);
+    res.json(result);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[SERVER] Error running Claude:', err);
+    res.status(500).json({ error: 'Failed to run Claude', status: 'error' });
+  }
+});
+
+app.post('/claude/stop', (_req, res) => {
+  console.log('[SERVER] /claude/stop endpoint called');
+  try {
+    const result = stopClaude();
+    console.log('[SERVER] Claude stop result:', result.status);
+    res.json(result);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[SERVER] Error stopping Claude:', err);
+    res.status(500).json({ error: 'Failed to stop Claude' });
+  }
+});
+
+app.post('/claude/reset', (_req, res) => {
+  console.log('[SERVER] /claude/reset endpoint called');
+  try {
+    const result = resetClaude();
+    console.log('[SERVER] Claude reset result:', result.status);
+    res.json(result);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[SERVER] Error resetting Claude:', err);
+    res.status(500).json({ error: 'Failed to reset Claude' });
+  }
+});
+
+app.get('/claude/status', (_req, res) => {
+  console.log('[SERVER] /claude/status endpoint called');
+  try {
+    const sessionId = getCurrentSessionId();
+    res.json({ sessionId });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[SERVER] Error getting Claude status:', err);
+    res.status(500).json({ error: 'Failed to get Claude status' });
+  }
+});
+
 app.get('/codex/events', (req, res) => {
   console.log('[SERVER] /codex/events SSE endpoint called');
 
@@ -142,11 +208,22 @@ app.get('/codex/events', (req, res) => {
     }
   });
 
+  // Subscribe to Claude events
+  const unsubscribeClaude = subscribeClaudeEvents((event) => {
+    try {
+      res.write(`data: ${JSON.stringify({ ...event, source: 'claude' })}\n\n`);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[SERVER] Error writing SSE Claude event:', err);
+    }
+  });
+
   // Handle client disconnect
   req.on('close', () => {
     console.log('[SERVER] SSE client disconnected');
     unsubscribeCodex();
     unsubscribeTranscript();
+    unsubscribeClaude();
   });
 });
 
