@@ -2,7 +2,7 @@ import axios from 'axios';
 import wrtc, { type MediaStreamTrack, type RTCRtpReceiver, type RTCDataChannel, type RTCPeerConnection } from 'wrtc';
 import { env } from '../config.env.js';
 import { runCodex, subscribeCodexEvents } from '../codex/codex.service.js';
-import { runClaude } from '../claude/claude.service.js';
+import { queryClaudeSession } from '../claude/claude.service.js';
 import { loadContextMemory, recordMemoryRun } from '../memory/context.memory.js';
 
 const RTCPeerConnectionClass = wrtc.RTCPeerConnection;
@@ -320,10 +320,10 @@ Be conversational and friendly. Always explain what the coding assistant found i
 
           console.log('[OPENAI-REALTIME] Executing Claude with prompt:', claudePrompt.slice(0, 160));
 
-          // Execute Claude asynchronously and send result back
+          // Execute Claude asynchronously using persistent session (maintains conversation history)
           (async () => {
             try {
-              const result = await runClaude(claudePrompt);
+              const result = await queryClaudeSession(claudePrompt);
               const output = result.status === 'ok'
                 ? result.finalResponse || 'Claude execution completed but no response was generated.'
                 : `Claude error: ${result.error || 'Unknown error'}`;

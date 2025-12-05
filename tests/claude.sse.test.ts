@@ -8,7 +8,29 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => {
     }
     return generator();
   }
-  return { query };
+
+  // V2 API mock for persistent sessions
+  class MockSession {
+    private messageQueue: string[] = [];
+
+    async send(message: string) {
+      this.messageQueue.push(message);
+    }
+
+    async *receive(): AsyncGenerator<any> {
+      const prompt = this.messageQueue.shift() || '';
+      yield { type: 'user', message: { content: [{ type: 'text', text: prompt }] } };
+      yield { type: 'result', result: 'session test result', session_id: 'sdk-session-123' };
+    }
+
+    close() {}
+  }
+
+  function unstable_v2_createSession() {
+    return new MockSession();
+  }
+
+  return { query, unstable_v2_createSession };
 });
 
 // Mock codex-sdk to prevent import errors
@@ -59,7 +81,7 @@ describe('Claude events via SSE endpoint', () => {
     }
   });
 
-  it('responds to /claude/status endpoint', async () => {
+  it('responds to /claude/status endpoint with hasActiveSession', async () => {
     const app = (await import('../src/server.js')).default;
     const server = app.listen(0);
 
@@ -73,6 +95,7 @@ describe('Claude events via SSE endpoint', () => {
 
       const data = await res.json();
       expect(data).toHaveProperty('sessionId');
+      expect(data).toHaveProperty('hasActiveSession');
     } finally {
       server.close();
     }
@@ -126,6 +149,73 @@ describe('Claude events via SSE endpoint', () => {
         typeof addr === 'string' ? addr : `http://127.0.0.1:${addr?.port ?? 0}`;
 
       const res = await fetch(`${base}/claude/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(400);
+
+      const data = await res.json();
+      expect(data.error).toBe('Missing prompt');
+    } finally {
+      server.close();
+    }
+  });
+
+  it('responds to /claude/init endpoint', async () => {
+    const app = (await import('../src/server.js')).default;
+    const server = app.listen(0);
+
+    try {
+      const addr = server.address();
+      const base =
+        typeof addr === 'string' ? addr : `http://127.0.0.1:${addr?.port ?? 0}`;
+
+      const res = await fetch(`${base}/claude/init`, { method: 'POST' });
+      expect(res.ok).toBe(true);
+
+      const data = await res.json();
+      expect(data.status).toBe('initialized');
+      expect(data.sessionId).toMatch(/^claude-session-\d+$/);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('responds to /claude/query endpoint', async () => {
+    const app = (await import('../src/server.js')).default;
+    const server = app.listen(0);
+
+    try {
+      const addr = server.address();
+      const base =
+        typeof addr === 'string' ? addr : `http://127.0.0.1:${addr?.port ?? 0}`;
+
+      const res = await fetch(`${base}/claude/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'test query' }),
+      });
+      expect(res.ok).toBe(true);
+
+      const data = await res.json();
+      expect(data.status).toBe('ok');
+      expect(data.sessionId).toMatch(/^claude-session-\d+$/);
+    } finally {
+      server.close();
+    }
+  });
+
+  it('rejects /claude/query without prompt', async () => {
+    const app = (await import('../src/server.js')).default;
+    const server = app.listen(0);
+
+    try {
+      const addr = server.address();
+      const base =
+        typeof addr === 'string' ? addr : `http://127.0.0.1:${addr?.port ?? 0}`;
+
+      const res = await fetch(`${base}/claude/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),

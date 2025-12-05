@@ -17,6 +17,9 @@ import {
   resetClaude,
   subscribeClaudeEvents,
   getCurrentSessionId,
+  initClaudeSession,
+  queryClaudeSession,
+  hasActiveSession,
 } from './claude/claude.service.js';
 import { subscribeTranscriptEvents } from './openai/openai.realtime.js';
 
@@ -168,11 +171,46 @@ app.get('/claude/status', (_req, res) => {
   console.log('[SERVER] /claude/status endpoint called');
   try {
     const sessionId = getCurrentSessionId();
-    res.json({ sessionId });
+    const hasSession = hasActiveSession();
+    res.json({ sessionId, hasActiveSession: hasSession });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[SERVER] Error getting Claude status:', err);
     res.status(500).json({ error: 'Failed to get Claude status' });
+  }
+});
+
+// Claude persistent session endpoints
+app.post('/claude/init', async (_req, res) => {
+  console.log('[SERVER] /claude/init endpoint called');
+  try {
+    const result = await initClaudeSession();
+    console.log('[SERVER] Claude init result:', result.status);
+    res.json(result);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[SERVER] Error initializing Claude session:', err);
+    res.status(500).json({ error: 'Failed to initialize Claude session', status: 'error' });
+  }
+});
+
+app.post('/claude/query', async (req, res) => {
+  console.log('[SERVER] /claude/query endpoint called');
+  const { prompt } = req.body ?? {};
+  if (!prompt || typeof prompt !== 'string') {
+    console.error('[SERVER] Invalid request: missing or invalid prompt');
+    return res.status(400).json({ error: 'Missing prompt' });
+  }
+
+  try {
+    console.log('[SERVER] Calling queryClaudeSession with prompt length:', prompt.length);
+    const result = await queryClaudeSession(prompt);
+    console.log('[SERVER] Claude query completed with status:', result.status);
+    res.json(result);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[SERVER] Error querying Claude session:', err);
+    res.status(500).json({ error: 'Failed to query Claude session', status: 'error' });
   }
 });
 
