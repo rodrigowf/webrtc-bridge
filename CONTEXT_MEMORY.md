@@ -24,14 +24,3 @@ Persistent notes the assistant should read on startup so context survives across
 
 ## Run Log
 - Initialized context memory; entries will be appended automatically on each assistant startup.
-- 2025-12-05T07:17:45.734Z UTC - Started OpenAI Realtime session (voice bridge)
-- 2025-12-05T07:32:02.688Z UTC - Started OpenAI Realtime session (voice bridge)
-- 2025-12-05T07:41:40.178Z UTC - Started OpenAI Realtime session (voice bridge)
-- 2025-12-05T18:00:59.137Z UTC - Started OpenAI Realtime session (voice bridge)
-- 2025-12-05T18:38:54.015Z UTC - Started OpenAI Realtime session (voice bridge)
-- 2025-12-05T18:45:22.709Z UTC - Started OpenAI Realtime session (voice bridge)
-- 2025-12-05T18:48:44.960Z UTC - Started OpenAI Realtime session (voice bridge)
-- 2025-12-05T18:51:58.836Z UTC - Started OpenAI Realtime session (voice bridge)
-- 2025-12-05T18:55:32.528Z UTC - Started OpenAI Realtime session (voice bridge)
-- 2025-12-05T19:01:45.769Z UTC - Started OpenAI Realtime session (voice bridge)
-- 2025-12-05T19:04:15.541Z UTC - Started OpenAI Realtime session (voice bridge)

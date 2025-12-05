@@ -12,6 +12,9 @@ const ui = {
   codexOutput: document.getElementById('codexOutput'),
   codexEmpty: document.getElementById('codexEmpty'),
   codexStatus: document.getElementById('codexStatus'),
+  tabButtons: document.querySelectorAll('.tab-btn'),
+  tabTranscript: document.getElementById('tabTranscript'),
+  tabCodex: document.getElementById('tabCodex'),
 };
 
 const state = {
@@ -270,7 +273,7 @@ function connectCodexEvents() {
 function setCodexStatus(state, text) {
   if (!ui.codexStatus) return;
   ui.codexStatus.textContent = text;
-  ui.codexStatus.className = 'codex-status ' + state;
+  ui.codexStatus.className = 'tab-status ' + state;
 }
 
 function handleCodexEvent(data) {
@@ -542,3 +545,33 @@ function clearCodexOutput() {
 
 // Auto-connect to Codex events on page load
 connectCodexEvents();
+
+// --- Tab Switching ---
+function switchTab(tabName) {
+  // Update button states
+  ui.tabButtons.forEach(btn => {
+    if (btn.dataset.tab === tabName) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+
+  // Update content visibility
+  if (tabName === 'transcript') {
+    ui.tabTranscript.classList.add('active');
+    ui.tabCodex.classList.remove('active');
+  } else if (tabName === 'codex') {
+    ui.tabCodex.classList.add('active');
+    ui.tabTranscript.classList.remove('active');
+  }
+}
+
+// Add click listeners to tab buttons
+ui.tabButtons.forEach(btn => {
+  btn.addEventListener('click', () => {
+    switchTab(btn.dataset.tab);
+  });
+});
+
+console.log('[FRONTEND] Tab switching initialized');

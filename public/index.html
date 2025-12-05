@@ -121,18 +121,79 @@
       .meter.outgoing .bars span { background: #6cf0c2; }
       .meter.incoming .bars span { background: #5ea3ff; }
       .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-      .transcript { display: grid; gap: 8px; max-height: 220px; overflow: auto; padding-right: 4px; }
-      .transcript .line { padding: 10px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--card-border); color: var(--text); font-size: 14px; line-height: 1.4; }
-      .transcript .line.streaming { border-style: dashed; animation: pulse 1.5s ease-in-out infinite; }
-      .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
-      audio { width: 100%; margin-top: 8px; opacity: 0.7; }
-      .sr-audio { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+      /* Custom Scrollbars */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 8px;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, rgba(108, 240, 194, 0.3), rgba(94, 163, 255, 0.3));
+        border-radius: 8px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, rgba(108, 240, 194, 0.5), rgba(94, 163, 255, 0.5));
+        background-clip: padding-box;
+      }
+      ::-webkit-scrollbar-corner {
+        background: transparent;
+      }
+      /* Firefox scrollbar */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(108, 240, 194, 0.3) rgba(255, 255, 255, 0.03);
+      }
 
-      /* Codex Activity Panel */
-      .codex-panel { }
-      .codex-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-      .codex-header h2 { margin: 0; }
-      .codex-status {
+      /* Tabbed Panel */
+      .tabbed-panel { }
+      .tab-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 12px;
+        border-bottom: 1px solid var(--card-border);
+        padding-bottom: 0;
+      }
+      .tab-btn {
+        background: transparent;
+        border: none;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 500;
+        padding: 8px 16px;
+        border-radius: 8px 8px 0 0;
+        cursor: pointer;
+        transition: all 150ms ease;
+        position: relative;
+        min-width: auto;
+        letter-spacing: 0.02em;
+      }
+      .tab-btn:hover {
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.04);
+        transform: none;
+      }
+      .tab-btn.active {
+        color: var(--accent);
+        background: rgba(108, 240, 194, 0.08);
+      }
+      .tab-btn.active::after {
+        content: '';
+        position: absolute;
+        bottom: -2px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 60%;
+        height: 2px;
+        background: linear-gradient(90deg, var(--accent), var(--accent-2));
+        border-radius: 2px;
+      }
+      .tab-status {
         font-size: 11px;
         padding: 4px 10px;
         border-radius: 12px;
@@ -140,15 +201,30 @@
         text-transform: uppercase;
         letter-spacing: 0.04em;
       }
-      .codex-status.idle { background: rgba(154, 161, 181, 0.2); color: var(--muted); }
-      .codex-status.connected { background: rgba(108, 240, 194, 0.15); color: var(--accent); }
-      .codex-status.running { background: rgba(94, 163, 255, 0.2); color: var(--accent-2); }
-      .codex-status.error { background: rgba(255, 107, 107, 0.2); color: var(--danger); }
+      .tab-status.idle { background: rgba(154, 161, 181, 0.2); color: var(--muted); }
+      .tab-status.connected { background: rgba(108, 240, 194, 0.15); color: var(--accent); }
+      .tab-status.running { background: rgba(94, 163, 255, 0.2); color: var(--accent-2); }
+      .tab-status.error { background: rgba(255, 107, 107, 0.2); color: var(--danger); }
+      .tab-content {
+        display: none;
+      }
+      .tab-content.active {
+        display: block;
+      }
+
+      .transcript { display: grid; gap: 8px; max-height: 320px; overflow-y: auto; padding-right: 4px; }
+      .transcript .line { padding: 10px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--card-border); color: var(--text); font-size: 14px; line-height: 1.4; }
+      .transcript .line.streaming { border-style: dashed; animation: pulse 1.5s ease-in-out infinite; }
+      .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+      audio { width: 100%; margin-top: 8px; opacity: 0.7; }
+      .sr-audio { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
+
+      /* Codex Activity */
       .codex-output {
         display: flex;
         flex-direction: column;
         gap: 6px;
-        max-height: 300px;
+        max-height: 320px;
         overflow-y: auto;
         padding-right: 4px;
         font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
@@ -240,20 +316,21 @@
         <audio id="remoteAudio" class="sr-audio" autoplay playsinline></audio>
       </div>
 
-      <div class="panel">
-        <h2>Transcriptions</h2>
-        <div id="transcript" class="transcript">
-          <div class="line" id="transcriptEmpty">Speak to stream transcript.</div>
+      <div class="panel tabbed-panel">
+        <div class="tab-header">
+          <button class="tab-btn active" data-tab="transcript">Transcriptions</button>
+          <button class="tab-btn" data-tab="codex">Codex Activity</button>
+          <span id="codexStatus" class="tab-status idle">Connecting...</span>
         </div>
-      </div>
-
-      <div class="panel codex-panel">
-        <div class="codex-header">
-          <h2>Codex Activity</h2>
-          <span id="codexStatus" class="codex-status idle">Connecting...</span>
+        <div id="tabTranscript" class="tab-content active">
+          <div id="transcript" class="transcript">
+            <div class="line" id="transcriptEmpty">Speak to stream transcript.</div>
+          </div>
         </div>
-        <div id="codexOutput" class="codex-output">
-          <div class="codex-line empty" id="codexEmpty">Waiting for Codex activity...</div>
+        <div id="tabCodex" class="tab-content">
+          <div id="codexOutput" class="codex-output">
+            <div class="codex-line empty" id="codexEmpty">Waiting for Codex activity...</div>
+          </div>
         </div>
       </div>
     </div>
