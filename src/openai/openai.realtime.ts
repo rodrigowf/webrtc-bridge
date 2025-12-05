@@ -8,6 +8,7 @@ const { RTCAudioSink, RTCAudioSource } = require('wrtc').nonstandard;
 type RTCAudioSinkEvent = { samples: Int16Array };
 
 import { env } from '../config.env';
+import { runCodex } from '../codex/codex.service';
 
 export type RealtimeAudioFrame = RTCAudioSinkEvent;
 
@@ -53,7 +54,17 @@ export type RealtimeSession = {
 
 export async function connectRealtimeSession(): Promise<RealtimeSession> {
   console.log('[OPENAI-REALTIME] connectRealtimeSession called');
-  const systemPrompt = 'Você é um assistante de voz amigável da TeleChat falando com o usuário pelo navegador.';
+  const systemPrompt = `You are a helpful voice assistant with access to Codex, an AI coding assistant.
+
+You can help users with:
+- Voice conversations and general questions
+- Code analysis and understanding (use run_codex function)
+- Finding and reading files in the codebase (use run_codex function)
+- Explaining how code works (use run_codex function)
+- Searching for patterns or TODO items (use run_codex function)
+
+When a user asks about code, files, or development tasks, use the run_codex function to analyze the codebase.
+Be conversational and friendly. Always explain what Codex found in a clear, natural way.`;
   console.log('[OPENAI-REALTIME] System prompt:', systemPrompt);
 
   console.log('[OPENAI-REALTIME] Creating RTCPeerConnection for OpenAI');
@@ -144,6 +155,113 @@ export async function connectRealtimeSession(): Promise<RealtimeSession> {
     }
 
     switch (payload.type) {
+      case 'response.output_item.added': {
+        // This event fires for ALL output items (messages AND function calls)
+        // We ONLY want to process function_call items
+        const itemType = payload.item?.type ?? 'unknown';
+
+        // DEBUG logging (limited to first 20 events)
+        if (eventCount <= 20) {
+          console.log('[OPENAI-REALTIME] output_item.added - itemType:', itemType, 'name:', payload.item?.name);
+        }
+
+        // ONLY process if this is a function_call (NOT a message)
+        if (itemType === 'function_call') {
+          const callId = `${payload.response_id ?? 'unknown'}:${payload.item?.call_id ?? 'call'}`;
+          const functionName = payload.item?.name ?? 'unknown';
+          console.log('[OPENAI-REALTIME] Function call detected:', functionName, 'callId:', callId);
+        }
+        break;
+      }
+      case 'response.function_call_arguments.done': {
+        const functionName = payload.name;
+        const callId = payload.call_id;
+        const rawArgs = payload.arguments;
+
+        console.log('[OPENAI-REALTIME] Function call arguments complete:', functionName, 'callId:', callId);
+
+        if (functionName === 'run_codex') {
+          let codexPrompt: string | null = null;
+
+          if (typeof rawArgs === 'string') {
+            try {
+              const parsed = JSON.parse(rawArgs);
+              if (typeof parsed === 'string') {
+                codexPrompt = parsed;
+              } else if (parsed && typeof parsed === 'object' && typeof parsed.prompt === 'string') {
+                codexPrompt = parsed.prompt;
+              }
+            } catch {
+              codexPrompt = rawArgs;
+            }
+          } else if (rawArgs && typeof rawArgs === 'object' && typeof rawArgs.prompt === 'string') {
+            codexPrompt = rawArgs.prompt;
+          }
+
+          if (!codexPrompt) {
+            console.error('[OPENAI-REALTIME] run_codex called without a valid prompt, raw args:', rawArgs);
+            const errorResult = {
+              type: 'conversation.item.create',
+              item: {
+                type: 'function_call_output',
+                call_id: callId,
+                output: JSON.stringify({ error: 'Codex prompt was missing or invalid.' }),
+              },
+            };
+            dataChannel.send(JSON.stringify(errorResult));
+            dataChannel.send(JSON.stringify({ type: 'response.create' }));
+            break;
+          }
+
+          console.log('[OPENAI-REALTIME] Executing Codex with prompt:', codexPrompt.slice(0, 160));
+
+          // Execute Codex asynchronously and send result back
+          (async () => {
+            try {
+              const result = await runCodex(codexPrompt);
+              const output = result.status === 'ok'
+                ? result.finalResponse || 'Codex execution completed but no response was generated.'
+                : `Codex error: ${result.error || 'Unknown error'}`;
+
+              console.log('[OPENAI-REALTIME] Codex execution completed, sending result back to assistant');
+
+              // Send function call result back to assistant
+              const functionResult = {
+                type: 'conversation.item.create',
+                item: {
+                  type: 'function_call_output',
+                  call_id: callId,
+                  output: JSON.stringify({ result: output }),
+                },
+              };
+              dataChannel.send(JSON.stringify(functionResult));
+
+              // Trigger assistant to respond with the result
+              const responseCreate = {
+                type: 'response.create',
+              };
+              dataChannel.send(JSON.stringify(responseCreate));
+            } catch (err: any) {
+              console.error('[OPENAI-REALTIME] Error executing Codex:', err);
+              const errorResult = {
+                type: 'conversation.item.create',
+                item: {
+                  type: 'function_call_output',
+                  call_id: callId,
+                  output: JSON.stringify({ error: err?.message || 'Failed to execute Codex' }),
+                },
+              };
+              dataChannel.send(JSON.stringify(errorResult));
+
+              const responseCreate = {
+                type: 'response.create',
+              };
+              dataChannel.send(JSON.stringify(responseCreate));
+            }
+          })();
+        }
+        break;
+      }
       case 'response.output_text.delta':
         if (payload.response_id && textResponseTrackers.has(payload.response_id)) {
           console.log('[OPENAI-REALTIME] Text delta received for response:', payload.response_id);
@@ -198,7 +316,7 @@ export async function connectRealtimeSession(): Promise<RealtimeSession> {
     clearTimeout(channelTimeout);
     channelOpened = true;
 
-    console.log('[OPENAI-REALTIME] Sending session.update with system prompt and modalities');
+    console.log('[OPENAI-REALTIME] Sending session.update with system prompt, modalities, and Codex tools');
     const sessionUpdate = {
       type: 'session.update',
       session: {
@@ -206,6 +324,23 @@ export async function connectRealtimeSession(): Promise<RealtimeSession> {
         turn_detection: { type: 'server_vad' },
         modalities: ['audio', 'text'],
         voice: 'alloy',
+        tools: [
+          {
+            type: 'function',
+            name: 'run_codex',
+            description: 'Run Codex AI assistant to analyze code, search files, read documentation, or perform complex coding tasks. Codex has full access to the codebase and can read, search, and analyze files. Use this when the user asks to analyze code, find files, read documentation, or perform any development task.',
+            parameters: {
+              type: 'object',
+              properties: {
+                prompt: {
+                  type: 'string',
+                  description: 'The task or question for Codex. Be specific about what you want Codex to do (e.g., "analyze the browser-bridge.ts file", "find all TODO comments", "explain how the WebRTC connection works").',
+                },
+              },
+              required: ['prompt'],
+            },
+          },
+        ],
       },
     };
     dataChannel.send(JSON.stringify(sessionUpdate));

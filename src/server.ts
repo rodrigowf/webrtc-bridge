@@ -3,6 +3,13 @@ import path from 'path';
 
 import { env } from './config.env';
 import { handleBrowserOffer } from './webrtc/browser-bridge';
+import {
+  runCodex,
+  stopCodex,
+  resetCodex,
+  subscribeCodexEvents,
+  getCurrentThreadId,
+} from './codex/codex.service';
 
 console.log('[SERVER] Initializing Express application...');
 const app = express();
@@ -36,6 +43,94 @@ app.post('/signal', async (req, res) => {
     console.error('[SERVER] Error handling browser offer:', err);
     res.status(500).json({ error: 'Failed to establish WebRTC bridge' });
   }
+});
+
+// Codex endpoints
+app.post('/codex/run', async (req, res) => {
+  console.log('[SERVER] /codex/run endpoint called');
+  const { prompt } = req.body ?? {};
+  if (!prompt || typeof prompt !== 'string') {
+    console.error('[SERVER] Invalid request: missing or invalid prompt');
+    return res.status(400).json({ error: 'Missing prompt' });
+  }
+
+  try {
+    console.log('[SERVER] Calling runCodex with prompt length:', prompt.length);
+    const result = await runCodex(prompt);
+    console.log('[SERVER] Codex run completed with status:', result.status);
+    res.json(result);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[SERVER] Error running Codex:', err);
+    res.status(500).json({ error: 'Failed to run Codex', status: 'error' });
+  }
+});
+
+app.post('/codex/stop', (_req, res) => {
+  console.log('[SERVER] /codex/stop endpoint called');
+  try {
+    const result = stopCodex();
+    console.log('[SERVER] Codex stop result:', result.status);
+    res.json(result);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[SERVER] Error stopping Codex:', err);
+    res.status(500).json({ error: 'Failed to stop Codex' });
+  }
+});
+
+app.post('/codex/reset', (_req, res) => {
+  console.log('[SERVER] /codex/reset endpoint called');
+  try {
+    const result = resetCodex();
+    console.log('[SERVER] Codex reset result:', result.status);
+    res.json(result);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[SERVER] Error resetting Codex:', err);
+    res.status(500).json({ error: 'Failed to reset Codex' });
+  }
+});
+
+app.get('/codex/status', (_req, res) => {
+  console.log('[SERVER] /codex/status endpoint called');
+  try {
+    const threadId = getCurrentThreadId();
+    res.json({ threadId });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[SERVER] Error getting Codex status:', err);
+    res.status(500).json({ error: 'Failed to get Codex status' });
+  }
+});
+
+app.get('/codex/events', (req, res) => {
+  console.log('[SERVER] /codex/events SSE endpoint called');
+
+  // Set SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+
+  // Send initial connection success
+  res.write('data: {"type":"connected"}\n\n');
+
+  // Subscribe to Codex events
+  const unsubscribe = subscribeCodexEvents((event) => {
+    try {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[SERVER] Error writing SSE event:', err);
+    }
+  });
+
+  // Handle client disconnect
+  req.on('close', () => {
+    console.log('[SERVER] SSE client disconnected');
+    unsubscribe();
+  });
 });
 
 if (process.env.NODE_ENV !== 'test') {
