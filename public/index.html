@@ -70,6 +70,96 @@
       .primary { background: linear-gradient(120deg, var(--accent), var(--accent-2)); color: #0a0b10; border: none; }
       .danger { background: linear-gradient(120deg, #ff9a8b, #ff6b6b); color: #0a0b10; border: none; }
       .muted-btn { background: rgba(255, 255, 255, 0.04); }
+
+      /* Audio Control Buttons with Icons and Meters */
+      .audio-btn {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        min-width: auto;
+        border-radius: 14px;
+        background: linear-gradient(135deg, rgba(108, 240, 194, 0.15), rgba(94, 163, 255, 0.1));
+        border: 1px solid rgba(108, 240, 194, 0.3);
+        transition: all 200ms ease;
+      }
+      .audio-btn:hover:not(:disabled) {
+        background: linear-gradient(135deg, rgba(108, 240, 194, 0.25), rgba(94, 163, 255, 0.2));
+        border-color: rgba(108, 240, 194, 0.5);
+        box-shadow: 0 0 20px rgba(108, 240, 194, 0.15);
+      }
+      .audio-btn.muted {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--card-border);
+      }
+      .audio-btn.muted:hover:not(:disabled) {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.2);
+        box-shadow: none;
+      }
+      .audio-btn:disabled {
+        opacity: 0.5;
+      }
+      .audio-btn .icon {
+        width: 22px;
+        height: 22px;
+        flex-shrink: 0;
+        transition: color 200ms ease;
+      }
+      .audio-btn .icon-mic,
+      .audio-btn .icon-speaker {
+        display: block;
+        color: var(--accent);
+      }
+      .audio-btn .icon-mic-off,
+      .audio-btn .icon-speaker-off {
+        display: none;
+        color: var(--muted);
+      }
+      .audio-btn.muted .icon-mic,
+      .audio-btn.muted .icon-speaker {
+        display: none;
+      }
+      .audio-btn.muted .icon-mic-off,
+      .audio-btn.muted .icon-speaker-off {
+        display: block;
+      }
+      /* AI button uses blue accent */
+      #muteAI:not(.muted) {
+        background: linear-gradient(135deg, rgba(94, 163, 255, 0.15), rgba(108, 240, 194, 0.1));
+        border-color: rgba(94, 163, 255, 0.3);
+      }
+      #muteAI:not(.muted):hover:not(:disabled) {
+        background: linear-gradient(135deg, rgba(94, 163, 255, 0.25), rgba(108, 240, 194, 0.2));
+        border-color: rgba(94, 163, 255, 0.5);
+        box-shadow: 0 0 20px rgba(94, 163, 255, 0.15);
+      }
+      #muteAI .icon-speaker {
+        color: var(--accent-2);
+      }
+      .audio-btn .bars {
+        display: flex;
+        align-items: flex-end;
+        gap: 2px;
+        height: 18px;
+        width: 22px;
+      }
+      .audio-btn .bars span {
+        display: block;
+        width: 4px;
+        border-radius: 2px;
+        background: var(--muted);
+        height: 4px;
+        transform-origin: bottom;
+        transition: height 80ms linear, background 150ms ease;
+      }
+      .audio-btn:not(.muted) .bars span {
+        background: var(--accent);
+      }
+      #muteAI:not(.muted) .bars span {
+        background: var(--accent-2);
+      }
+
       .panel h2 {
         margin: 0 0 8px;
         font-size: 13px;
@@ -87,39 +177,7 @@
         background: var(--muted);
       }
       .status-row { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 600; letter-spacing: 0.01em; }
-      .status-row.align-spread { justify-content: space-between; }
-      .status-group { display: inline-flex; align-items: center; gap: 10px; }
       .status-sub { margin-top: 4px; color: var(--muted); font-size: 13px; }
-      .meters { display: inline-flex; align-items: center; gap: 8px; min-width: 170px; justify-content: flex-end; }
-      .meter {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 10px;
-        border-radius: 12px;
-        background: rgba(255, 255, 255, 0.04);
-        border: 1px solid var(--card-border);
-        color: var(--text);
-        font-size: 13px;
-      }
-      .meter .bars {
-        display: inline-flex;
-        align-items: flex-end;
-        gap: 3px;
-        height: 16px;
-        width: 24px;
-      }
-      .meter .bars span {
-        display: block;
-        width: 4px;
-        border-radius: 2px;
-        background: var(--muted);
-        height: 3px;
-        transform-origin: bottom;
-        transition: height 80ms linear, background 120ms ease;
-      }
-      .meter.outgoing .bars span { background: #6cf0c2; }
-      .meter.incoming .bars span { background: #5ea3ff; }
       .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
       /* Custom Scrollbars */
       ::-webkit-scrollbar {
@@ -288,29 +346,44 @@
             <p>Voice chat, live transcription.</p>
           </div>
           <div class="controls">
-            <button id="mute" class="muted-btn" disabled>Unmute</button>
-            <button id="muteAI" class="muted-btn" disabled>Unmute AI</button>
-          </div>
-        </div>
-        <div class="status-row align-spread" style="margin-top: 12px;">
-          <div class="status-group">
-            <span id="statusDot" class="status-dot"></span>
-            <span id="status">Idle</span>
-          </div>
-          <div class="meters" id="audioIndicator">
-            <div class="meter outgoing">
+            <button id="mute" class="audio-btn muted" disabled aria-label="Toggle microphone">
+              <svg class="icon icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+              <svg class="icon icon-mic-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="1" y1="1" x2="23" y2="23"/>
+                <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+                <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
               <div class="bars" id="meterOutgoing" aria-hidden="true">
                 <span></span><span></span><span></span><span></span>
               </div>
-              <strong class="sr-only" id="audioIndicatorOutgoingLabel">Outgoing level</strong>
-            </div>
-            <div class="meter incoming">
+            </button>
+            <button id="muteAI" class="audio-btn muted" disabled aria-label="Toggle AI audio">
+              <svg class="icon icon-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+              </svg>
+              <svg class="icon icon-speaker-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                <line x1="23" y1="9" x2="17" y2="15"/>
+                <line x1="17" y1="9" x2="23" y2="15"/>
+              </svg>
               <div class="bars" id="meterIncoming" aria-hidden="true">
                 <span></span><span></span><span></span><span></span>
               </div>
-              <strong class="sr-only" id="audioIndicatorIncomingLabel">Incoming level</strong>
-            </div>
+            </button>
           </div>
+        </div>
+        <div class="status-row" style="margin-top: 12px;">
+          <span id="statusDot" class="status-dot"></span>
+          <span id="status">Idle</span>
         </div>
         <div class="status-sub" id="subStatus">Ready.</div>
         <audio id="remoteAudio" class="sr-audio" autoplay playsinline></audio>

@@ -192,7 +192,7 @@ function toggleMute() {
   if (!state.localStream) return;
   state.isMuted = !state.isMuted;
   state.localStream.getAudioTracks().forEach((t) => (t.enabled = !state.isMuted));
-  ui.muteButton.textContent = state.isMuted ? 'Unmute' : 'Mute';
+  ui.muteButton.classList.toggle('muted', state.isMuted);
   updateStatusText();
 }
 
@@ -200,7 +200,7 @@ function toggleAIMute() {
   state.isAIMuted = !state.isAIMuted;
   // Mute/unmute the remote audio element
   ui.remoteAudio.muted = state.isAIMuted;
-  ui.muteAIButton.textContent = state.isAIMuted ? 'Unmute AI' : 'Mute AI';
+  ui.muteAIButton.classList.toggle('muted', state.isAIMuted);
   updateStatusText();
 }
 
@@ -229,10 +229,10 @@ function computeLevel(analyser) {
 function renderMeter(el, level) {
   if (!el) return;
   const bars = el.querySelectorAll('span');
-  const base = level * 16 + 3;
+  const base = level * 14 + 4;
   bars.forEach((bar, idx) => {
     const jitter = (idx % 2 === 0 ? 1 : -1) * 2;
-    const height = Math.max(3, Math.min(16, base + jitter));
+    const height = Math.max(4, Math.min(18, base + jitter));
     bar.style.height = `${height}px`;
   });
 }
