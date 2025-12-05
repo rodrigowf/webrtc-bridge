@@ -59,4 +59,29 @@ declare module 'wrtc' {
     onerror?: (event: unknown) => void;
     send(data: string | Buffer): void;
   }
+
+  export interface MediaStream {}
+
+  export interface Nonstandard {
+    RTCAudioSink: typeof RTCAudioSink;
+    RTCAudioSource: typeof RTCAudioSource;
+    RTCVideoSink: any;
+    RTCVideoSource: any;
+    i420ToRgba: any;
+    rgbaToI420: any;
+  }
+
+  interface WrtcExports {
+    RTCPeerConnection: typeof RTCPeerConnection;
+    MediaStreamTrack: typeof MediaStreamTrack;
+    RTCRtpReceiver: typeof RTCRtpReceiver;
+    RTCDataChannel: typeof RTCDataChannel;
+    RTCAudioSink: typeof RTCAudioSink;
+    RTCAudioSource: typeof RTCAudioSource;
+    MediaStream: typeof MediaStream;
+    nonstandard: Nonstandard;
+  }
+
+  const wrtc: WrtcExports;
+  export default wrtc;
 }

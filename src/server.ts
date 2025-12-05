@@ -1,15 +1,20 @@
 import express from 'express';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-import { env } from './config.env';
-import { handleBrowserOffer } from './webrtc/browser-bridge';
+import { env } from './config.env.js';
+import { handleBrowserOffer } from './webrtc/browser-bridge.js';
 import {
   runCodex,
   stopCodex,
   resetCodex,
   subscribeCodexEvents,
   getCurrentThreadId,
-} from './codex/codex.service';
+} from './codex/codex.service.js';
+
+// ESM equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 console.log('[SERVER] Initializing Express application...');
 const app = express();

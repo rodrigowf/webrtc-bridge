@@ -1,11 +1,10 @@
-import { RTCPeerConnection, type MediaStreamTrack } from 'wrtc';
+import wrtc, { type MediaStreamTrack, type RTCPeerConnection } from 'wrtc';
+import { connectRealtimeSession } from '../openai/openai.realtime.js';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { RTCAudioSink, RTCAudioSource } = require('wrtc').nonstandard;
+const RTCPeerConnectionClass = wrtc.RTCPeerConnection;
+const { RTCAudioSink, RTCAudioSource } = wrtc.nonstandard;
 
 type RTCAudioSinkEvent = { samples: Int16Array };
-
-import { connectRealtimeSession } from '../openai/openai.realtime';
 
 let currentBridge: {
   close: () => void;
@@ -50,7 +49,7 @@ export async function handleBrowserOffer(offerSdp: string): Promise<{ answerSdp:
   }
 
   console.log('[BROWSER-BRIDGE] Creating new RTCPeerConnection for browser');
-  const browserPC = new RTCPeerConnection();
+  const browserPC = new RTCPeerConnectionClass();
   browserPC.oniceconnectionstatechange = () => {
     console.log('[BROWSER-BRIDGE] ICE connection state:', browserPC.iceConnectionState);
   };

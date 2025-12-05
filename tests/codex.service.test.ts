@@ -52,7 +52,7 @@ vi.mock('@openai/codex-sdk', () => {
 
 async function loadService() {
   // Ensure a fresh module state for each test
-  const service = await import('../src/codex/codex.service');
+  const service = await import('../src/codex/codex.service.js');
   return service;
 }
 

@@ -56,3 +56,56 @@ npm test
 ```
 
 Currently there is a minimal test that checks the `/healthz` endpoint.
+
+## Global CLI launcher (`vcode`)
+
+Expose the app as a global command that starts the existing server and UI from any terminal.
+
+1) Add a CLI entrypoint compiled with the rest of the app, e.g. `src/cli.ts`:
+
+```ts
+#!/usr/bin/env node
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// Run from the package root so .env and public/ resolve correctly
+process.chdir(path.resolve(__dirname, '..'));
+
+// Start the already-built server; stays alive until you Ctrl+C
+import('./server.js');
+```
+
+2) Add a `bin` map in `package.json` so npm wires up the command after build:
+
+```json
+"bin": {
+  "vcode": "./dist/cli.js"
+}
+```
+
+`private` can remain `true`; local/global installs still work.
+
+3) Build to generate `dist/cli.js` alongside `dist/server.js`:
+
+```bash
+npm run build
+```
+
+4) Install globally with the Node version managed by NVM (globals are per-version):
+
+```bash
+nvm use 20   # or the version you run locally
+npm install -g .
+```
+
+Ensure `~/.nvm/versions/node/<version>/bin` is on your `PATH` so `vcode` is available.
+
+5) Launch from any terminal:
+
+```bash
+vcode
+```
+
+Each run starts a fresh Node process that re-reads `.env` via `src/config.env.ts` and spins up a new Codex thread context inside `src/codex/codex.service.ts`, matching the current project setup without reusing state from previous runs.

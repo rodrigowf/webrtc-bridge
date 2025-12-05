@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import app from '../src/server';
+import app from '../src/server.js';
 
 describe('Codex events SSE endpoint', () => {
   it('responds with text/event-stream', async () => {

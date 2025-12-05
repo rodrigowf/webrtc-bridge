@@ -2,7 +2,10 @@
   "name": "webrtc-openai-voice-bridge",
   "version": "0.1.0",
   "private": true,
-  "type": "commonjs",
+  "type": "module",
+  "bin": {
+    "vcode": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsc -p .",
     "start": "node dist/server.js",
