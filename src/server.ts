@@ -3,7 +3,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { env } from './config.env.js';
-import { handleBrowserOffer } from './webrtc/browser-bridge.js';
+import { handleBrowserOffer, handleBrowserDisconnect, getConnectionCount, getConnectionIds } from './webrtc/browser-bridge.js';
+import { realtimeSessionManager } from './openai/openai.realtime.js';
 import {
   runCodex,
   stopCodex,
@@ -32,6 +33,7 @@ const app = express();
 
 console.log('[SERVER] Setting up middleware...');
 app.use(express.json());
+app.use(express.text()); // Support text/plain for sendBeacon
 app.use(express.static(path.join(__dirname, '..', 'public')));
 console.log('[SERVER] Static files served from:', path.join(__dirname, '..', 'public'));
 
@@ -51,13 +53,60 @@ app.post('/signal', async (req, res) => {
   console.log('[SERVER] Valid offer received, SDP length:', offer.length);
   try {
     console.log('[SERVER] Calling handleBrowserOffer...');
-    const { answerSdp } = await handleBrowserOffer(offer);
-    console.log('[SERVER] Successfully created answer SDP, length:', answerSdp.length);
-    res.json({ answer: answerSdp });
+    const { answerSdp, connectionId } = await handleBrowserOffer(offer);
+    console.log('[SERVER] Successfully created answer SDP, length:', answerSdp.length, 'connectionId:', connectionId);
+    res.json({ answer: answerSdp, connectionId });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('[SERVER] Error handling browser offer:', err);
     res.status(500).json({ error: 'Failed to establish WebRTC bridge' });
+  }
+});
+
+// Disconnect a specific frontend connection
+app.post('/disconnect', (req, res) => {
+  console.log('[SERVER] /disconnect endpoint called');
+
+  // Handle both JSON body and text/plain body (from sendBeacon)
+  let connectionId: string | undefined;
+  if (typeof req.body === 'string') {
+    try {
+      const parsed = JSON.parse(req.body);
+      connectionId = parsed.connectionId;
+    } catch {
+      console.error('[SERVER] Failed to parse text body as JSON');
+    }
+  } else {
+    connectionId = req.body?.connectionId;
+  }
+
+  if (!connectionId || typeof connectionId !== 'string') {
+    console.error('[SERVER] Invalid request: missing or invalid connectionId');
+    return res.status(400).json({ error: 'Missing connectionId' });
+  }
+
+  try {
+    const result = handleBrowserDisconnect(connectionId);
+    console.log('[SERVER] Disconnect result:', result.status);
+    res.json(result);
+  } catch (err) {
+    console.error('[SERVER] Error disconnecting:', err);
+    res.status(500).json({ error: 'Failed to disconnect' });
+  }
+});
+
+// Get session status (OpenAI connection + active frontends)
+app.get('/session/status', (_req, res) => {
+  console.log('[SERVER] /session/status endpoint called');
+  try {
+    res.json({
+      openaiConnected: realtimeSessionManager.isConnected(),
+      frontendCount: getConnectionCount(),
+      frontendIds: getConnectionIds(),
+    });
+  } catch (err) {
+    console.error('[SERVER] Error getting session status:', err);
+    res.status(500).json({ error: 'Failed to get session status' });
   }
 });
 

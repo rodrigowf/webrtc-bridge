@@ -9,6 +9,117 @@ const RTCPeerConnectionClass = wrtc.RTCPeerConnection;
 const { RTCAudioSink, RTCAudioSource } = wrtc.nonstandard;
 type RTCAudioSinkEvent = { samples: Int16Array };
 
+// ============================================================================
+// RealtimeSessionManager - Long-lived singleton for OpenAI Realtime connection
+// ============================================================================
+
+type AssistantAudioListener = (frame: RealtimeAudioFrame) => void;
+
+class RealtimeSessionManager {
+  private session: RealtimeSession | null = null;
+  private sessionPromise: Promise<RealtimeSession> | null = null;
+  private assistantAudioListeners = new Map<string, AssistantAudioListener>();
+
+  /**
+   * Get or create the long-lived OpenAI Realtime session.
+   * Multiple calls during initialization will return the same promise.
+   */
+  async getSession(): Promise<RealtimeSession> {
+    if (this.session) {
+      console.log('[SESSION-MANAGER] Returning existing session');
+      return this.session;
+    }
+
+    if (this.sessionPromise) {
+      console.log('[SESSION-MANAGER] Session creation in progress, waiting...');
+      return this.sessionPromise;
+    }
+
+    console.log('[SESSION-MANAGER] Creating new long-lived session');
+    this.sessionPromise = this.createSession();
+
+    try {
+      this.session = await this.sessionPromise;
+      console.log('[SESSION-MANAGER] Session created successfully');
+      return this.session;
+    } catch (err) {
+      console.error('[SESSION-MANAGER] Failed to create session:', err);
+      this.sessionPromise = null;
+      throw err;
+    }
+  }
+
+  private async createSession(): Promise<RealtimeSession> {
+    const session = await connectRealtimeSessionInternal();
+
+    // Set up broadcast handler for assistant audio
+    session.onAssistantAudio((frame: RealtimeAudioFrame) => {
+      for (const [id, listener] of this.assistantAudioListeners) {
+        try {
+          listener(frame);
+        } catch (err) {
+          console.error(`[SESSION-MANAGER] Error in audio listener ${id}:`, err);
+        }
+      }
+    });
+
+    return session;
+  }
+
+  /**
+   * Add a listener for assistant audio. Each frontend connection gets its own listener.
+   * Returns an unsubscribe function.
+   */
+  addAssistantAudioListener(connectionId: string, listener: AssistantAudioListener): () => void {
+    console.log(`[SESSION-MANAGER] Adding audio listener for connection: ${connectionId}`);
+    this.assistantAudioListeners.set(connectionId, listener);
+
+    return () => {
+      console.log(`[SESSION-MANAGER] Removing audio listener for connection: ${connectionId}`);
+      this.assistantAudioListeners.delete(connectionId);
+    };
+  }
+
+  /**
+   * Send user audio to OpenAI (from any connected frontend)
+   */
+  sendUserAudio(frame: RealtimeAudioFrame): void {
+    if (this.session) {
+      this.session.sendUserAudio(frame);
+    }
+  }
+
+  /**
+   * Check if session is connected
+   */
+  isConnected(): boolean {
+    return this.session !== null;
+  }
+
+  /**
+   * Get number of active audio listeners (connected frontends)
+   */
+  getListenerCount(): number {
+    return this.assistantAudioListeners.size;
+  }
+
+  /**
+   * Close the session (for shutdown only)
+   */
+  closeSession(): void {
+    if (this.session) {
+      console.log('[SESSION-MANAGER] Closing session');
+      this.session.close();
+      this.session = null;
+      this.sessionPromise = null;
+      this.assistantAudioListeners.clear();
+    }
+  }
+}
+
+// Export singleton instance
+export const realtimeSessionManager = new RealtimeSessionManager();
+
 // Transcript event broadcasting - shares the same SSE channel as Codex events
 export type TranscriptEvent = {
   type: 'transcript_delta' | 'transcript_done' | 'user_transcript_delta' | 'user_transcript_done';
@@ -78,8 +189,9 @@ export type RealtimeSession = {
   close: () => void;
 };
 
-export async function connectRealtimeSession(): Promise<RealtimeSession> {
-  console.log('[OPENAI-REALTIME] connectRealtimeSession called');
+// Internal function - use realtimeSessionManager.getSession() instead
+async function connectRealtimeSessionInternal(): Promise<RealtimeSession> {
+  console.log('[OPENAI-REALTIME] connectRealtimeSessionInternal called');
   let contextMemory = '';
   try {
     contextMemory = await loadContextMemory();
@@ -645,4 +757,12 @@ Be conversational and friendly. Always explain what the coding assistant found i
     waitForTextResponse,
     close,
   };
+}
+
+/**
+ * Public wrapper - use realtimeSessionManager for new multi-connection code.
+ * This is kept for backward compatibility.
+ */
+export async function connectRealtimeSession(): Promise<RealtimeSession> {
+  return realtimeSessionManager.getSession();
 }

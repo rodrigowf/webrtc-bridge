@@ -1,9 +1,16 @@
 # WebRTC ↔ OpenAI Realtime Voice Bridge
 
-This project bridges a browser WebRTC connection to OpenAI's Realtime voice API via a Node.js backend. It now ships a minimal, modern voice UI with live meters for both directions, animated background, and inline status indicators.
+A voice-controlled coding agent that bridges browser WebRTC audio to OpenAI's Realtime voice API via a Node.js backend. Features integrated Codex (OpenAI) and Claude Code (Anthropic) agents for code generation, file operations, and terminal commands.
 
-- Frontend: HTML/CSS/JS that captures microphone audio, performs signaling, shows start/stop + mute controls, and renders dual audio level meters (outgoing = mic → model, incoming = assistant → you). Audio plays via a hidden element.
-- Backend: Node.js + TypeScript server that accepts a WebRTC connection from the browser and forwards audio to OpenAI Realtime via another WebRTC connection, with ICE-gathering waits and detailed logging.
+## Key Features
+
+- **Multi-frontend support** - Multiple browser tabs can connect to the same long-lived OpenAI session
+- **Auto-connect** - Frontend connects automatically on page load (no Start button)
+- **Start muted** - Both mic and AI audio muted by default to prevent echo
+- **Independent controls** - Each frontend can independently mute mic and AI audio
+- **Dual AI agents** - Voice assistant can delegate tasks to Codex or Claude Code
+- **Live transcription** - Real-time transcript of conversation in UI
+- **Audio meters** - Visual feedback for mic (teal) and AI (blue) audio levels
 
 ## Setup
 
@@ -23,7 +30,7 @@ Edit `.env`:
 
 ```env
 OPENAI_API_KEY=sk-REPLACE_ME
-REALTIME_MODEL=gpt-realtime
+REALTIME_MODEL=gpt-4o-realtime-preview-2024-10-01
 PORT=8080
 ```
 
@@ -33,14 +40,23 @@ PORT=8080
 npm run dev
 ```
 
-Then open `http://localhost:8080` in your browser and click **Start**. Use **Mute** to toggle your mic; meters show live levels for you (teal) and the assistant (blue).
+Then open `http://localhost:8080` in your browser. The page auto-connects and starts with both mic and AI muted. Click **Unmute** to enable your microphone and **Unmute AI** to hear the assistant.
 
-## UI at a Glance
+## UI Controls
 
-- Start/Stop and Mute controls in a compact header.
-- Dual live audio meters (outgoing teal, incoming blue) driven by real audio levels.
-- Hidden audio player keeps playback active while keeping the UI minimal.
-- Animated gradient background with streamlined cards for indicators and transcripts.
+- **Unmute / Mute** - Toggle your microphone (starts muted)
+- **Unmute AI / Mute AI** - Toggle assistant audio playback (starts muted)
+- **Transcript tab** - Real-time conversation transcription
+- **Codex tab** - OpenAI Codex agent activity
+- **Claude tab** - Claude Code agent activity
+
+## Multi-Tab Usage
+
+Open multiple browser tabs pointing to the same server:
+- All tabs connect to the same OpenAI Realtime session
+- Speak in any tab - assistant hears from all unmuted mics
+- Each tab can independently mute/unmute mic and AI audio
+- Useful for: listening from one device while speaking from another
 
 ## Build & run
 
@@ -55,57 +71,30 @@ npm start
 npm test
 ```
 
-Currently there is a minimal test that checks the `/healthz` endpoint.
-
 ## Global CLI launcher (`vcode`)
 
-Expose the app as a global command that starts the existing server and UI from any terminal.
-
-1) Add a CLI entrypoint compiled with the rest of the app, e.g. `src/cli.ts`:
-
-```ts
-#!/usr/bin/env node
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-// Run from the package root so .env and public/ resolve correctly
-process.chdir(path.resolve(__dirname, '..'));
-
-// Start the already-built server; stays alive until you Ctrl+C
-import('./server.js');
-```
-
-2) Add a `bin` map in `package.json` so npm wires up the command after build:
-
-```json
-"bin": {
-  "vcode": "./dist/cli.js"
-}
-```
-
-`private` can remain `true`; local/global installs still work.
-
-3) Build to generate `dist/cli.js` alongside `dist/server.js`:
+Install globally to run from any terminal:
 
 ```bash
 npm run build
-```
-
-4) Install globally with the Node version managed by NVM (globals are per-version):
-
-```bash
-nvm use 20   # or the version you run locally
 npm install -g .
-```
-
-Ensure `~/.nvm/versions/node/<version>/bin` is on your `PATH` so `vcode` is available.
-
-5) Launch from any terminal:
-
-```bash
 vcode
 ```
 
-Each run starts a fresh Node process that re-reads `.env` via `src/config.env.ts` and spins up a new Codex thread context inside `src/codex/codex.service.ts`, matching the current project setup without reusing state from previous runs.
+Starts the server and opens the voice UI. Each run creates a fresh session.
+
+## Architecture
+
+```
+Frontend A ──┐
+Frontend B ──┼─→ Backend (Node.js) ─→ OpenAI Realtime API
+Frontend C ──┘     │
+                   ├─→ Codex Agent (code tasks)
+                   └─→ Claude Agent (complex tasks)
+```
+
+- **RealtimeSessionManager** - Long-lived singleton OpenAI connection
+- **BrowserConnectionManager** - Per-frontend WebRTC connections
+- **Codex/Claude Services** - AI coding agents triggered by voice
+
+See [CLAUDE.md](CLAUDE.md) for detailed architecture documentation.

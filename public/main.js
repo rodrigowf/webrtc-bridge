@@ -1,6 +1,6 @@
 const ui = {
-  startButton: document.getElementById('start'),
   muteButton: document.getElementById('mute'),
+  muteAIButton: document.getElementById('muteAI'),
   statusEl: document.getElementById('status'),
   subStatusEl: document.getElementById('subStatus'),
   statusDot: document.getElementById('statusDot'),
@@ -24,7 +24,9 @@ const ui = {
 const state = {
   pc: null,
   localStream: null,
-  isMuted: false,
+  connectionId: null, // Track our connection ID for multi-frontend support
+  isMuted: true, // Start muted
+  isAIMuted: true, // Start with AI muted
   isActive: false,
 };
 
@@ -81,13 +83,15 @@ function attachIncomingAnalyser(stream) {
 }
 
 async function startCall() {
-  console.log('[FRONTEND] startCall() function invoked');
+  console.log('[FRONTEND] startCall() function invoked - auto-connecting');
   try {
-    ui.startButton.disabled = true;
     setStatus('Requesting microphone...', 'Grant access to begin', 'idle');
 
     state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     console.log('[FRONTEND] Microphone access granted, stream tracks:', state.localStream.getTracks().length);
+
+    // Start with mic muted
+    state.localStream.getAudioTracks().forEach((t) => (t.enabled = false));
 
     await ensureAudioContext();
     attachOutgoingAnalyser(state.localStream);
@@ -106,6 +110,8 @@ async function startCall() {
       const remoteStream = event.streams?.[0] || new MediaStream([event.track]);
       ui.remoteAudio.srcObject = remoteStream;
       ui.remoteAudio.volume = 1.0;
+      // Start with AI muted
+      ui.remoteAudio.muted = true;
 
       event.track.onunmute = () => console.log('[FRONTEND] ✅ Remote track UNMUTED - audio should now be audible!');
 
@@ -113,7 +119,7 @@ async function startCall() {
 
       ui.remoteAudio
         .play()
-        .then(() => console.log('[FRONTEND] ✅ Remote audio playback started successfully'))
+        .then(() => console.log('[FRONTEND] ✅ Remote audio playback started successfully (muted)'))
         .catch((err) => console.error('[FRONTEND] ❌ Failed to start audio playback:', err));
 
       startMeters();
@@ -138,26 +144,39 @@ async function startCall() {
       throw new Error(data.error || 'Signaling failed');
     }
 
+    // Store connection ID for multi-frontend support
+    state.connectionId = data.connectionId;
+    console.log('[FRONTEND] Connection ID:', state.connectionId);
+
     await state.pc.setRemoteDescription({ type: 'answer', sdp: data.answer });
-    setStatus('Connected', 'Speak freely.', 'live');
+    setStatus('Connected', 'Both mic and AI are muted. Click to unmute.', 'live');
     state.isActive = true;
-    ui.startButton.textContent = 'Stop';
-    ui.startButton.classList.remove('primary');
-    ui.startButton.classList.add('danger');
     ui.muteButton.disabled = false;
-    console.log('[FRONTEND] ✅ WebRTC connection established successfully!');
+    ui.muteAIButton.disabled = false;
+    console.log('[FRONTEND] ✅ WebRTC connection established successfully (starting muted)!');
   } catch (err) {
     console.error('[FRONTEND] Error during connection setup:', err);
     setStatus('Error', err.message || String(err), 'error');
-    ui.startButton.disabled = false;
     state.isActive = false;
   }
 }
 
-function stopCall() {
-  console.log('[FRONTEND] stopCall() invoked');
+function cleanup() {
+  console.log('[FRONTEND] cleanup() invoked');
   state.isActive = false;
   stopMeters();
+
+  // Notify backend to cleanup this connection
+  if (state.connectionId) {
+    console.log('[FRONTEND] Notifying backend of disconnect:', state.connectionId);
+    fetch('/disconnect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ connectionId: state.connectionId }),
+    }).catch((err) => console.error('[FRONTEND] Error notifying disconnect:', err));
+    state.connectionId = null;
+  }
+
   if (state.pc) {
     state.pc.getSenders().forEach((sender) => sender.track?.stop());
     state.pc.close();
@@ -167,14 +186,6 @@ function stopCall() {
     state.localStream.getTracks().forEach((t) => t.stop());
     state.localStream = null;
   }
-  ui.startButton.textContent = 'Start';
-  ui.startButton.classList.add('primary');
-  ui.startButton.classList.remove('danger');
-  ui.startButton.disabled = false;
-  ui.muteButton.disabled = true;
-  ui.muteButton.textContent = 'Mute';
-  state.isMuted = false;
-  setStatus('Idle', 'Ready when you are.', 'idle');
 }
 
 function toggleMute() {
@@ -182,7 +193,27 @@ function toggleMute() {
   state.isMuted = !state.isMuted;
   state.localStream.getAudioTracks().forEach((t) => (t.enabled = !state.isMuted));
   ui.muteButton.textContent = state.isMuted ? 'Unmute' : 'Mute';
-  ui.subStatusEl.textContent = state.isMuted ? 'You are muted' : 'Speak freely — we are listening.';
+  updateStatusText();
+}
+
+function toggleAIMute() {
+  state.isAIMuted = !state.isAIMuted;
+  // Mute/unmute the remote audio element
+  ui.remoteAudio.muted = state.isAIMuted;
+  ui.muteAIButton.textContent = state.isAIMuted ? 'Unmute AI' : 'Mute AI';
+  updateStatusText();
+}
+
+function updateStatusText() {
+  if (state.isMuted && state.isAIMuted) {
+    ui.subStatusEl.textContent = 'Both mic and AI are muted. Click to unmute.';
+  } else if (state.isMuted) {
+    ui.subStatusEl.textContent = 'Your mic is muted';
+  } else if (state.isAIMuted) {
+    ui.subStatusEl.textContent = 'AI audio is muted';
+  } else {
+    ui.subStatusEl.textContent = 'Speak freely — we are listening.';
+  }
 }
 
 function computeLevel(analyser) {
@@ -226,19 +257,27 @@ function stopMeters() {
   renderMeter(ui.meterIncoming, 0);
 }
 
-ui.startButton.addEventListener('click', () => {
-  console.log('[FRONTEND] Start/Stop button clicked');
-  if (!state.isActive) {
-    void startCall();
-  } else {
-    stopCall();
-  }
-});
-
 ui.muteButton.addEventListener('click', () => {
   console.log('[FRONTEND] Mute/Unmute toggled');
   toggleMute();
 });
+
+ui.muteAIButton.addEventListener('click', () => {
+  console.log('[FRONTEND] Mute AI toggled');
+  toggleAIMute();
+});
+
+// Notify backend when page is closed/refreshed
+window.addEventListener('beforeunload', () => {
+  if (state.connectionId) {
+    // Use sendBeacon for reliable delivery during unload
+    navigator.sendBeacon('/disconnect', JSON.stringify({ connectionId: state.connectionId }));
+  }
+});
+
+// Auto-connect on page load
+console.log('[FRONTEND] Auto-connecting on page load...');
+void startCall();
 
 console.log('[FRONTEND] Event listeners attached');
 
