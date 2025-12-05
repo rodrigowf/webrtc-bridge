@@ -149,7 +149,7 @@ async function startCall() {
     console.log('[FRONTEND] Connection ID:', state.connectionId);
 
     await state.pc.setRemoteDescription({ type: 'answer', sdp: data.answer });
-    setStatus('Connected', 'Both mic and AI are muted. Click to unmute.', 'live');
+    setStatus('Connected', 'Both Mic and AI are muted', 'live');
     state.isActive = true;
     ui.muteButton.disabled = false;
     ui.muteAIButton.disabled = false;
@@ -206,13 +206,13 @@ function toggleAIMute() {
 
 function updateStatusText() {
   if (state.isMuted && state.isAIMuted) {
-    ui.subStatusEl.textContent = 'Both mic and AI are muted. Click to unmute.';
+    ui.subStatusEl.textContent = 'Both Mic and AI are muted';
   } else if (state.isMuted) {
     ui.subStatusEl.textContent = 'Your mic is muted';
   } else if (state.isAIMuted) {
     ui.subStatusEl.textContent = 'AI audio is muted';
   } else {
-    ui.subStatusEl.textContent = 'Speak freely — we are listening.';
+    ui.subStatusEl.textContent = 'Speak freely — we are listening';
   }
 }
 
