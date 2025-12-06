@@ -1,0 +1,25 @@
+{
+  "name": "VCode - Voice Coding Agent",
+  "short_name": "VCode",
+  "description": "Voice-controlled coding agent that handles complex code and terminal tasks through natural speech",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f111a",
+  "theme_color": "#0f111a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["developer", "productivity", "utilities"]
+}

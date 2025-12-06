@@ -26,6 +26,7 @@ import {
   hasActiveSession,
 } from './claude/claude.service.js';
 import { subscribeTranscriptEvents } from './openai/openai.realtime.js';
+import { displayServerInfo } from './utils/network-info.js';
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -323,20 +324,19 @@ if (process.env.NODE_ENV !== 'test') {
       const sslCerts = getSSLCerts(env.SSL_CERT_PATH, env.SSL_KEY_PATH);
       const httpsServer = https.createServer(sslCerts, app);
       httpsServer.listen(env.PORT, () => {
-        console.log(`[SERVER] HTTPS server listening on https://localhost:${env.PORT}`);
-        console.log(`[SERVER] For mobile access, use: https://<your-local-ip>:${env.PORT}`);
+        displayServerInfo(env.PORT, true);
       });
     } catch (error) {
       console.error('[SERVER] Failed to start HTTPS server:', error);
       console.log('[SERVER] Falling back to HTTP...');
       app.listen(env.PORT, () => {
-        console.log(`[SERVER] HTTP server listening on http://localhost:${env.PORT}`);
+        displayServerInfo(env.PORT, false);
         console.log('[SERVER] WARNING: WebRTC will not work on mobile without HTTPS');
       });
     }
   } else {
     app.listen(env.PORT, () => {
-      console.log(`[SERVER] HTTP server listening on http://localhost:${env.PORT}`);
+      displayServerInfo(env.PORT, false);
       console.log('[SERVER] WARNING: WebRTC will not work on mobile without HTTPS');
     });
   }

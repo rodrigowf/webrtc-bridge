@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f111a"/>
+      <stop offset="100%" style="stop-color:#1a1d2e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6cf0c2"/>
+      <stop offset="100%" style="stop-color:#5ea3ff"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <!-- Microphone icon -->
+  <g transform="translate(156, 96)" fill="none" stroke="url(#accent)" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Mic body -->
+    <rect x="60" y="0" width="80" height="160" rx="40" fill="url(#accent)" opacity="0.2"/>
+    <rect x="60" y="0" width="80" height="160" rx="40"/>
+    <!-- Mic stand curve -->
+    <path d="M30 120 v30 a70 70 0 0 0 140 0 v-30"/>
+    <!-- Mic stand -->
+    <line x1="100" y1="220" x2="100" y2="280"/>
+    <line x1="60" y1="280" x2="140" y2="280"/>
+  </g>
+  <!-- Code brackets -->
+  <g transform="translate(106, 330)" fill="none" stroke="url(#accent)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M60 0 L20 40 L60 80"/>
+    <path d="M240 0 L280 40 L240 80"/>
+    <!-- Slash -->
+    <line x1="120" y1="0" x2="180" y2="80"/>
+  </g>
+</svg>
