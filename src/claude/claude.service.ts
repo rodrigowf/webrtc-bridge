@@ -239,6 +239,8 @@ export async function runClaude(prompt: string): Promise<ClaudeRunResult> {
         abortController,
         cwd: process.cwd(),
         maxTurns: 10,
+        permissionMode: 'bypassPermissions',
+        allowDangerouslySkipPermissions: true,
       },
     });
 
