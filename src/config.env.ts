@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 console.log('[CONFIG] Loading environment configuration...');
 dotenv.config();
 
-const PORT = Number(process.env.PORT) || 8080;
+const PORT = Number(process.env.PORT) || 8765;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const REALTIME_MODEL = process.env.REALTIME_MODEL || 'gpt-realtime';
 
