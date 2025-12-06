@@ -1,8 +1,11 @@
 import express from 'express';
+import https from 'https';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 import { env } from './config.env.js';
+import { getSSLCerts } from './ssl/generate-cert.js';
 import { handleBrowserOffer, handleBrowserDisconnect, getConnectionCount, getConnectionIds } from './webrtc/browser-bridge.js';
 import { realtimeSessionManager } from './openai/openai.realtime.js';
 import {
@@ -315,10 +318,28 @@ app.get('/codex/events', (req, res) => {
 });
 
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(env.PORT, () => {
-    // eslint-disable-next-line no-console
-    console.log(`Server listening on http://localhost:${env.PORT}`);
-  });
+  if (env.SSL_ENABLED) {
+    try {
+      const sslCerts = getSSLCerts(env.SSL_CERT_PATH, env.SSL_KEY_PATH);
+      const httpsServer = https.createServer(sslCerts, app);
+      httpsServer.listen(env.PORT, () => {
+        console.log(`[SERVER] HTTPS server listening on https://localhost:${env.PORT}`);
+        console.log(`[SERVER] For mobile access, use: https://<your-local-ip>:${env.PORT}`);
+      });
+    } catch (error) {
+      console.error('[SERVER] Failed to start HTTPS server:', error);
+      console.log('[SERVER] Falling back to HTTP...');
+      app.listen(env.PORT, () => {
+        console.log(`[SERVER] HTTP server listening on http://localhost:${env.PORT}`);
+        console.log('[SERVER] WARNING: WebRTC will not work on mobile without HTTPS');
+      });
+    }
+  } else {
+    app.listen(env.PORT, () => {
+      console.log(`[SERVER] HTTP server listening on http://localhost:${env.PORT}`);
+      console.log('[SERVER] WARNING: WebRTC will not work on mobile without HTTPS');
+    });
+  }
 }
 
 export default app;
