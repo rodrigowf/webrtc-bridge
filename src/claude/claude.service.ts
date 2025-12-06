@@ -1,4 +1,5 @@
 import { performance } from 'node:perf_hooks';
+import { formatClaudeMessage } from '../utils/log-formatter.js';
 
 type ClaudeAgentModule = typeof import('@anthropic-ai/claude-agent-sdk');
 type SDKSession = import('@anthropic-ai/claude-agent-sdk').SDKSession;
@@ -147,7 +148,8 @@ export async function queryClaudeSession(prompt: string): Promise<ClaudeRunResul
         throw new Error('aborted');
       }
 
-      console.log('[CLAUDE]', message.type);
+      const formatted = formatClaudeMessage(message as Record<string, unknown>);
+      if (formatted) console.log(formatted);
       messages.push(message);
       broadcast('message', message);
 
@@ -240,7 +242,8 @@ export async function runClaude(prompt: string): Promise<ClaudeRunResult> {
     });
 
     for await (const message of queryStream) {
-      console.log('[CLAUDE]', message.type);
+      const formatted = formatClaudeMessage(message as Record<string, unknown>);
+      if (formatted) console.log(formatted);
       messages.push(message);
       broadcast('message', message);
 

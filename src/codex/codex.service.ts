@@ -1,4 +1,5 @@
 import { performance } from 'node:perf_hooks';
+import { formatCodexEvent } from '../utils/log-formatter.js';
 
 type CodexModule = typeof import('@openai/codex-sdk');
 type Thread = import('@openai/codex-sdk').Thread;
@@ -99,7 +100,8 @@ export async function runCodex(prompt: string): Promise<CodexRunResult> {
 
   try {
     for await (const event of events) {
-      console.log('[CODEX]', event.type);
+      const formatted = formatCodexEvent(event as Record<string, unknown>);
+      if (formatted) console.log(formatted);
       if (event.type === 'thread.started') {
         lastThreadId = event.thread_id;
       }
