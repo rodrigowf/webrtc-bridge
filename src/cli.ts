@@ -2,21 +2,18 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Save the user's working directory before changing to package root.
-// This is where Codex/Claude agents should operate.
-const userWorkingDir = process.cwd();
-(globalThis as any).__USER_WORKING_DIR__ = userWorkingDir;
-
-// Ensure runtime path resolution matches repo root for env/public assets.
+// Calculate package root for assets (public/, .env)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const packageRoot = path.resolve(__dirname, '..');
-(globalThis as any).__PACKAGE_ROOT__ = packageRoot;
-process.chdir(packageRoot);
 
-console.log('[CLI] User working directory:', userWorkingDir);
+// Store package root globally - used by config.env.ts for .env file path
+(globalThis as any).__PACKAGE_ROOT__ = packageRoot;
+
+// DO NOT chdir - keep process.cwd() as user's working directory
+// so that Claude/Codex agents operate in the user's project
+console.log('[CLI] Working directory:', process.cwd());
 console.log('[CLI] Package root:', packageRoot);
 
 // Start the built server (keeps process alive).
-// Use dynamic import to ensure globals are set BEFORE server module loads.
 import('./server.js');

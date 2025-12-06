@@ -1,11 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const MEMORY_PATH = path.resolve(__dirname, '..', '..', 'CONTEXT_MEMORY.md');
+// Memory file is in the user's working directory (process.cwd())
+function getMemoryPath(): string {
+  return path.join(process.cwd(), 'CONTEXT_MEMORY.md');
+}
 
 const DEFAULT_MEMORY = `# Context Memory
 
@@ -25,47 +24,50 @@ Persistent notes the assistant should read on startup so context survives across
 - (log decisions or agreements to honor later)
 
 ## Project Details
-- App: WebRTC <-> OpenAI Realtime voice bridge (Node.js + TypeScript backend, minimal frontend UI).
-- Default port: 8080 (configurable via .env PORT).
-- CLI: \`vcode\` -> \`dist/cli.js\` starts the built server.
-- Build/dev: \`npm run dev\`, \`npm run build\`, \`npm start\`.
-- Tests: \`npm test\` (healthz + Codex endpoints), Playwright E2E available.
+- (project-specific details will be added here)
 
 ## Run Log
 - Initialized context memory; entries will be appended automatically on each assistant startup.
 `;
 
 export async function ensureMemoryFile() {
+  const memoryPath = getMemoryPath();
+  console.log('[MEMORY] Memory file path:', memoryPath);
   try {
-    await fs.access(MEMORY_PATH);
+    await fs.access(memoryPath);
   } catch {
-    await fs.writeFile(MEMORY_PATH, DEFAULT_MEMORY, 'utf8');
+    await fs.writeFile(memoryPath, DEFAULT_MEMORY, 'utf8');
   }
 }
 
 export async function loadContextMemory(): Promise<string> {
-  await ensureMemoryFile();
+  const memoryPath = getMemoryPath();
+  // Don't auto-create - only load if file exists in user's directory
   try {
-    return await fs.readFile(MEMORY_PATH, 'utf8');
-  } catch (err) {
-    console.error('[MEMORY] Failed to read context memory file:', err);
-    return DEFAULT_MEMORY;
+    await fs.access(memoryPath);
+    console.log('[MEMORY] Loading context memory from:', memoryPath);
+    return await fs.readFile(memoryPath, 'utf8');
+  } catch {
+    console.log('[MEMORY] No CONTEXT_MEMORY.md found in:', process.cwd());
+    return ''; // Return empty string if no memory file exists
   }
 }
 
 export async function recordMemoryRun(note: string) {
+  const memoryPath = getMemoryPath();
   const safeNote = note.replace(/\s+/g, ' ').trim();
   const timestamp = new Date().toISOString();
   const entry = `- ${timestamp} UTC - ${safeNote}`;
 
-  await ensureMemoryFile();
+  // Only record if memory file already exists
   try {
-    const current = await fs.readFile(MEMORY_PATH, 'utf8');
+    await fs.access(memoryPath);
+    const current = await fs.readFile(memoryPath, 'utf8');
     const hasRunLog = current.includes('## Run Log');
     const base = hasRunLog ? current.trimEnd() : `${current.trimEnd()}\n\n## Run Log`;
     const updated = `${base}\n${entry}\n`;
-    await fs.writeFile(MEMORY_PATH, updated, 'utf8');
-  } catch (err) {
-    console.error('[MEMORY] Failed to append run entry to context memory:', err);
+    await fs.writeFile(memoryPath, updated, 'utf8');
+  } catch {
+    // No memory file in user directory - skip recording
   }
 }

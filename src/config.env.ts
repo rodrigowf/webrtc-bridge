@@ -1,7 +1,15 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 
+// Get package root - either from global (set by CLI) or derive from __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const packageRoot = (globalThis as any).__PACKAGE_ROOT__ || path.resolve(__dirname, '..');
+
 console.log('[CONFIG] Loading environment configuration...');
-dotenv.config();
+console.log('[CONFIG] Loading .env from:', packageRoot);
+dotenv.config({ path: path.join(packageRoot, '.env') });
 
 const PORT = Number(process.env.PORT) || 8765;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
