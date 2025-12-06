@@ -88,22 +88,19 @@ export async function initClaudeSession(): Promise<ClaudeInitResult> {
   const mod = await ensureClaudeModule();
 
   if (currentSession) {
-    console.log('[CLAUDE] Session already exists, returning existing session');
     return { status: 'already_initialized', sessionId: lastSessionId };
   }
 
   sessionCounter++;
   lastSessionId = `claude-session-${sessionCounter}`;
 
-  console.log('[CLAUDE] Creating new persistent session:', lastSessionId);
+  console.log('[CLAUDE] New session:', lastSessionId);
 
-  // Use the V2 unstable API for persistent sessions
   currentSession = (mod as any).unstable_v2_createSession({
     model: 'claude-sonnet-4-5-20250929',
   });
 
   broadcast('session_started', { session_id: lastSessionId });
-  console.log('[CLAUDE] Persistent session initialized:', lastSessionId);
 
   return { status: 'initialized', sessionId: lastSessionId };
 }
@@ -113,11 +110,7 @@ export async function initClaudeSession(): Promise<ClaudeInitResult> {
  * If no session exists, one will be created automatically.
  */
 export async function queryClaudeSession(prompt: string): Promise<ClaudeRunResult> {
-  console.log('[CLAUDE] queryClaudeSession called, prompt length:', prompt?.length ?? 0);
-
-  // Auto-initialize session if needed
   if (!currentSession) {
-    console.log('[CLAUDE] No active session, initializing new one');
     await initClaudeSession();
   }
 
@@ -130,7 +123,6 @@ export async function queryClaudeSession(prompt: string): Promise<ClaudeRunResul
   }
 
   if (isProcessing) {
-    console.log('[CLAUDE] Already processing a message, aborting previous');
     if (currentAbort) {
       currentAbort.abort();
     }
@@ -140,7 +132,7 @@ export async function queryClaudeSession(prompt: string): Promise<ClaudeRunResul
   currentAbort = abortController;
   isProcessing = true;
 
-  console.log('[CLAUDE] Sending message to persistent session:', lastSessionId);
+  console.log('[CLAUDE] Running:', prompt?.slice(0, 80));
   broadcast('turn_started', { session_id: lastSessionId, prompt: prompt.slice(0, 100) });
 
   const messages: unknown[] = [];
@@ -150,19 +142,15 @@ export async function queryClaudeSession(prompt: string): Promise<ClaudeRunResul
     // Send the message to the persistent session
     await currentSession.send(prompt);
 
-    // Receive the response (maintains full conversation history)
     for await (const message of currentSession.receive()) {
-      // Check for abort
       if (abortController.signal.aborted) {
         throw new Error('aborted');
       }
 
-      // Log events for debugging
-      console.log('[CLAUDE] Event:', message.type, JSON.stringify(message).slice(0, 300));
+      console.log('[CLAUDE]', message.type);
       messages.push(message);
       broadcast('message', message);
 
-      // Extract text from assistant messages
       if (message.type === 'assistant') {
         const content = (message as any).message?.content;
         if (Array.isArray(content)) {
@@ -174,22 +162,15 @@ export async function queryClaudeSession(prompt: string): Promise<ClaudeRunResul
         }
       }
 
-      // Handle result message
       if (message.type === 'result') {
         const resultText = (message as any).result;
         if (typeof resultText === 'string' && resultText) {
           finalResponse = resultText;
         }
-        // Update session ID from the SDK if provided
-        const sdkSessionId = (message as any).session_id;
-        if (sdkSessionId) {
-          console.log('[CLAUDE] SDK session ID:', sdkSessionId);
-        }
       }
     }
   } catch (err: any) {
     if (abortController.signal.aborted) {
-      console.warn('[CLAUDE] Turn aborted:', err?.message);
       broadcast('turn_aborted', { reason: err?.message ?? 'aborted' });
       currentAbort = null;
       isProcessing = false;
@@ -200,7 +181,7 @@ export async function queryClaudeSession(prompt: string): Promise<ClaudeRunResul
         finalResponse,
       };
     }
-    console.error('[CLAUDE] Error during execution:', err?.message);
+    console.error('[CLAUDE] Error:', err?.message);
     broadcast('turn_error', { message: err?.message ?? 'Unknown Claude error' });
     currentAbort = null;
     isProcessing = false;
@@ -213,7 +194,7 @@ export async function queryClaudeSession(prompt: string): Promise<ClaudeRunResul
     };
   }
 
-  console.log('[CLAUDE] Turn completed successfully, response length:', finalResponse?.length ?? 0);
+  console.log('[CLAUDE] Done');
   currentAbort = null;
   isProcessing = false;
   broadcast('turn_completed', { session_id: lastSessionId });
@@ -230,11 +211,9 @@ export async function queryClaudeSession(prompt: string): Promise<ClaudeRunResul
  * Use queryClaudeSession() instead for persistent conversations.
  */
 export async function runClaude(prompt: string): Promise<ClaudeRunResult> {
-  console.log('[CLAUDE] runClaude called (fresh session), prompt length:', prompt?.length ?? 0);
   const mod = await ensureClaudeModule();
 
   if (currentAbort) {
-    console.log('[CLAUDE] Aborting previous Claude turn before starting new one');
     currentAbort.abort();
   }
 
@@ -244,16 +223,13 @@ export async function runClaude(prompt: string): Promise<ClaudeRunResult> {
   sessionCounter++;
   const freshSessionId = `claude-fresh-${sessionCounter}`;
 
-  console.log('[CLAUDE] Starting fresh Claude session:', freshSessionId);
+  console.log('[CLAUDE] Fresh session:', freshSessionId);
   broadcast('session_started', { session_id: freshSessionId });
 
   const messages: unknown[] = [];
   let finalResponse = '';
 
   try {
-    console.log('[CLAUDE] Starting streamed run...');
-
-    // Use the query function from claude-agent-sdk (fresh session each time)
     const queryStream = mod.query({
       prompt,
       options: {
@@ -264,12 +240,10 @@ export async function runClaude(prompt: string): Promise<ClaudeRunResult> {
     });
 
     for await (const message of queryStream) {
-      // Log events for debugging
-      console.log('[CLAUDE] Event:', message.type, JSON.stringify(message).slice(0, 300));
+      console.log('[CLAUDE]', message.type);
       messages.push(message);
       broadcast('message', message);
 
-      // Extract text from assistant messages
       if (message.type === 'assistant') {
         const content = (message as any).message?.content;
         if (Array.isArray(content)) {
@@ -281,7 +255,6 @@ export async function runClaude(prompt: string): Promise<ClaudeRunResult> {
         }
       }
 
-      // Handle result message
       if (message.type === 'result') {
         const resultText = (message as any).result;
         if (typeof resultText === 'string' && resultText) {
@@ -291,7 +264,6 @@ export async function runClaude(prompt: string): Promise<ClaudeRunResult> {
     }
   } catch (err: any) {
     if (abortController.signal.aborted) {
-      console.warn('[CLAUDE] Turn aborted:', err?.message);
       broadcast('turn_aborted', { reason: err?.message ?? 'aborted' });
       currentAbort = null;
       return {
@@ -301,7 +273,7 @@ export async function runClaude(prompt: string): Promise<ClaudeRunResult> {
         finalResponse,
       };
     }
-    console.error('[CLAUDE] Error during execution:', err?.message);
+    console.error('[CLAUDE] Error:', err?.message);
     broadcast('turn_error', { message: err?.message ?? 'Unknown Claude error' });
     currentAbort = null;
     return {
@@ -313,7 +285,7 @@ export async function runClaude(prompt: string): Promise<ClaudeRunResult> {
     };
   }
 
-  console.log('[CLAUDE] Turn completed successfully, response length:', finalResponse?.length ?? 0);
+  console.log('[CLAUDE] Done');
   currentAbort = null;
   broadcast('session_completed', { session_id: freshSessionId });
   return {
@@ -326,7 +298,6 @@ export async function runClaude(prompt: string): Promise<ClaudeRunResult> {
 
 export function stopClaude(): ClaudeStopResult {
   if (currentAbort) {
-    console.log('[CLAUDE] Stopping current turn');
     currentAbort.abort();
     currentAbort = null;
     isProcessing = false;
@@ -340,7 +311,6 @@ export function resetClaude(): ClaudeResetResult {
     currentAbort.abort();
   }
   if (currentSession) {
-    console.log('[CLAUDE] Closing persistent session');
     currentSession.close();
     currentSession = null;
   }

@@ -26,12 +26,10 @@ class RealtimeSessionManager {
    */
   async getSession(): Promise<RealtimeSession> {
     if (this.session) {
-      console.log('[SESSION-MANAGER] Returning existing session');
       return this.session;
     }
 
     if (this.sessionPromise) {
-      console.log('[SESSION-MANAGER] Session creation in progress, waiting...');
       return this.sessionPromise;
     }
 
@@ -71,11 +69,8 @@ class RealtimeSessionManager {
    * Returns an unsubscribe function.
    */
   addAssistantAudioListener(connectionId: string, listener: AssistantAudioListener): () => void {
-    console.log(`[SESSION-MANAGER] Adding audio listener for connection: ${connectionId}`);
     this.assistantAudioListeners.set(connectionId, listener);
-
     return () => {
-      console.log(`[SESSION-MANAGER] Removing audio listener for connection: ${connectionId}`);
       this.assistantAudioListeners.delete(connectionId);
     };
   }
@@ -151,19 +146,16 @@ export type RealtimeAudioFrame = RTCAudioSinkEvent;
 
 async function waitForIceGatheringComplete(pc: RTCPeerConnection, label: string, timeoutMs = 10_000) {
   if (pc.iceGatheringState === 'complete') {
-    console.log(`[${label}] ICE gathering already complete`);
     return;
   }
 
-  console.log(`[${label}] Waiting for ICE gathering to complete...`);
   await new Promise<void>((resolve) => {
     const timeout = setTimeout(() => {
-      console.warn(`[${label}] ICE gathering timed out after ${timeoutMs}ms - proceeding with current SDP`);
+      console.warn(`[${label}] ICE gathering timed out after ${timeoutMs}ms`);
       resolve();
     }, timeoutMs);
 
     const handler = () => {
-      console.log(`[${label}] ICE gathering state:`, pc.iceGatheringState);
       if (pc.iceGatheringState === 'complete') {
         clearTimeout(timeout);
         resolve();
@@ -191,13 +183,12 @@ export type RealtimeSession = {
 
 // Internal function - use realtimeSessionManager.getSession() instead
 async function connectRealtimeSessionInternal(): Promise<RealtimeSession> {
-  console.log('[OPENAI-REALTIME] connectRealtimeSessionInternal called');
   let contextMemory = '';
   try {
     contextMemory = await loadContextMemory();
     await recordMemoryRun('Started OpenAI Realtime session (voice bridge)');
   } catch (err) {
-    console.error('[OPENAI-REALTIME] Failed to load or update context memory:', err);
+    console.error('[OPENAI-REALTIME] Failed to load context memory:', err);
     contextMemory = 'Context memory unavailable (read/write error).';
   }
 
@@ -221,47 +212,38 @@ When a user asks about code, files, or development tasks:
 - If the user explicitly asks for Codex, use run_codex
 
 Be conversational and friendly. Always explain what the coding assistant found in a clear, natural way.`;
-  console.log('[OPENAI-REALTIME] System prompt:', systemPrompt);
 
-  console.log('[OPENAI-REALTIME] Creating RTCPeerConnection for OpenAI');
   const pc = new RTCPeerConnectionClass({
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require',
   });
   pc.oniceconnectionstatechange = () => {
-    console.log('[OPENAI-REALTIME] ICE connection state:', pc.iceConnectionState);
+    if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+      console.warn('[OPENAI-REALTIME] ICE connection:', pc.iceConnectionState);
+    }
   };
   pc.onconnectionstatechange = () => {
-    console.log('[OPENAI-REALTIME] Peer connection state:', pc.connectionState);
-  };
-  pc.onicegatheringstatechange = () => {
-    console.log('[OPENAI-REALTIME] ICE gathering state:', pc.iceGatheringState);
+    if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+      console.warn('[OPENAI-REALTIME] Connection:', pc.connectionState);
+    }
   };
 
-  console.log('[OPENAI-REALTIME] Creating audio source for user audio');
   const audioSource = new RTCAudioSource();
   const track = audioSource.createTrack();
   pc.addTrack(track);
-  console.log('[OPENAI-REALTIME] Audio track added to peer connection');
 
   let audioSink: any = null;
-  let audioFrameReceived = 0;
 
   pc.ontrack = (event: { receiver: RTCRtpReceiver; track: MediaStreamTrack }) => {
-    console.log('[OPENAI-REALTIME] ontrack event - track kind:', event.track.kind);
     const receiver: RTCRtpReceiver = event.receiver;
     const incomingTrack = event.track;
     if (incomingTrack.kind === 'audio') {
-      console.log('[OPENAI-REALTIME] Audio track received from OpenAI - creating audio sink');
       audioSink = new RTCAudioSink(incomingTrack);
-      console.log('[OPENAI-REALTIME] Audio sink created and ready to receive assistant audio');
     } else {
-      console.log('[OPENAI-REALTIME] Non-audio track received, stopping:', incomingTrack.kind);
       receiver.track.stop();
     }
   };
 
-  console.log('[OPENAI-REALTIME] Creating data channel "oai-events" for control messages');
   const dataChannel: RTCDataChannel = pc.createDataChannel('oai-events');
 
   type TextResponseTracker = {
@@ -296,36 +278,22 @@ Be conversational and friendly. Always explain what the coding assistant found i
     try {
       payload = JSON.parse(raw);
     } catch (err) {
-      console.error('[OPENAI-REALTIME] Failed to parse data channel message:', err);
+      console.error('[OPENAI-REALTIME] Failed to parse message:', err);
       return;
     }
 
     if (!payload?.type) {
-      console.warn('[OPENAI-REALTIME] Received message without type field:', payload);
       return;
     }
 
     eventCount++;
-    if (eventCount <= 10 || eventCount % 50 === 0) {
-      console.log('[OPENAI-REALTIME] Data channel event #' + eventCount + ':', payload.type);
-    }
 
     switch (payload.type) {
       case 'response.output_item.added': {
-        // This event fires for ALL output items (messages AND function calls)
-        // We ONLY want to process function_call items
         const itemType = payload.item?.type ?? 'unknown';
-
-        // DEBUG logging (limited to first 20 events)
-        if (eventCount <= 20) {
-          console.log('[OPENAI-REALTIME] output_item.added - itemType:', itemType, 'name:', payload.item?.name);
-        }
-
-        // ONLY process if this is a function_call (NOT a message)
         if (itemType === 'function_call') {
-          const callId = `${payload.response_id ?? 'unknown'}:${payload.item?.call_id ?? 'call'}`;
           const functionName = payload.item?.name ?? 'unknown';
-          console.log('[OPENAI-REALTIME] Function call detected:', functionName, 'callId:', callId);
+          console.log('[OPENAI-REALTIME] Function call:', functionName);
         }
         break;
       }
@@ -333,8 +301,6 @@ Be conversational and friendly. Always explain what the coding assistant found i
         const functionName = payload.name;
         const callId = payload.call_id;
         const rawArgs = payload.arguments;
-
-        console.log('[OPENAI-REALTIME] Function call arguments complete:', functionName, 'callId:', callId);
 
         // Helper to extract prompt from various argument formats
         const extractPrompt = (args: unknown): string | null => {
@@ -373,7 +339,7 @@ Be conversational and friendly. Always explain what the coding assistant found i
             break;
           }
 
-          console.log('[OPENAI-REALTIME] Executing Codex with prompt:', codexPrompt.slice(0, 160));
+          console.log('[OPENAI-REALTIME] Running Codex:', codexPrompt.slice(0, 100));
 
           // Execute Codex asynchronously and send result back
           (async () => {
@@ -382,8 +348,6 @@ Be conversational and friendly. Always explain what the coding assistant found i
               const output = result.status === 'ok'
                 ? result.finalResponse || 'Codex execution completed but no response was generated.'
                 : `Codex error: ${result.error || 'Unknown error'}`;
-
-              console.log('[OPENAI-REALTIME] Codex execution completed, sending result back to assistant');
 
               // Send function call result back to assistant
               const functionResult = {
@@ -430,7 +394,7 @@ Be conversational and friendly. Always explain what the coding assistant found i
             break;
           }
 
-          console.log('[OPENAI-REALTIME] Executing Claude with prompt:', claudePrompt.slice(0, 160));
+          console.log('[OPENAI-REALTIME] Running Claude:', claudePrompt.slice(0, 100));
 
           // Execute Claude asynchronously using persistent session (maintains conversation history)
           (async () => {
@@ -439,8 +403,6 @@ Be conversational and friendly. Always explain what the coding assistant found i
               const output = result.status === 'ok'
                 ? result.finalResponse || 'Claude execution completed but no response was generated.'
                 : `Claude error: ${result.error || 'Unknown error'}`;
-
-              console.log('[OPENAI-REALTIME] Claude execution completed, sending result back to assistant');
 
               // Send function call result back to assistant
               const functionResult = {
@@ -474,14 +436,12 @@ Be conversational and friendly. Always explain what the coding assistant found i
       }
       case 'response.output_text.delta':
         if (payload.response_id && textResponseTrackers.has(payload.response_id)) {
-          console.log('[OPENAI-REALTIME] Text delta received for response:', payload.response_id);
           textResponseTrackers.get(payload.response_id)?.buffer.push(payload.delta ?? '');
         }
         break;
       case 'response.audio_transcript.delta': {
         const transcript = payload?.delta ?? '';
         if (transcript) {
-          console.log('[OPENAI-REALTIME] Assistant transcript delta:', transcript.slice(0, 200));
           broadcastTranscript('transcript_delta', transcript, 'assistant');
         }
         break;
@@ -489,7 +449,6 @@ Be conversational and friendly. Always explain what the coding assistant found i
       case 'response.audio_transcript.done': {
         const transcript = payload?.transcript ?? '';
         if (transcript) {
-          console.log('[OPENAI-REALTIME] Assistant transcript done:', transcript.slice(0, 200));
           broadcastTranscript('transcript_done', transcript, 'assistant');
         }
         break;
@@ -497,35 +456,29 @@ Be conversational and friendly. Always explain what the coding assistant found i
       case 'conversation.item.input_audio_transcription.completed': {
         const transcript = payload?.transcript ?? '';
         if (transcript) {
-          console.log('[OPENAI-REALTIME] User transcript:', transcript.slice(0, 200));
           broadcastTranscript('user_transcript_done', transcript, 'user');
         }
         break;
       }
       case 'response.completed':
         if (payload.response?.id) {
-          console.log('[OPENAI-REALTIME] Response completed:', payload.response.id);
           flushTracker(payload.response.id);
         }
         break;
       case 'response.error':
       case 'error':
-        console.error('[OPENAI-REALTIME] Error event received:', payload.error?.message || payload);
+        console.error('[OPENAI-REALTIME] Error:', payload.error?.message || payload);
         if (payload.response_id && textResponseTrackers.has(payload.response_id)) {
           flushTracker(payload.response_id, new Error(payload.error?.message ?? 'Realtime response error'));
         }
         break;
       default:
-        if (eventCount <= 20) {
-          console.log('[OPENAI-REALTIME] Unhandled event type:', payload.type);
-        }
         break;
     }
   };
 
   (dataChannel as any).onmessage = handleMessage;
 
-  console.log('[OPENAI-REALTIME] Setting up data channel ready promise');
   let readyResolve!: () => void;
   let readyReject!: (error: Error) => void;
   const channelReady = new Promise<void>((resolve, reject) => {
@@ -534,16 +487,14 @@ Be conversational and friendly. Always explain what the coding assistant found i
   });
 
   const channelTimeout = setTimeout(() => {
-    console.error('[OPENAI-REALTIME] Data channel timeout - failed to open within 10 seconds');
+    console.error('[OPENAI-REALTIME] Data channel timeout');
     readyReject(new Error('Timeout waiting for Realtime data channel'));
   }, 10_000);
 
   const handleOpen = () => {
-    console.log('[OPENAI-REALTIME] Data channel OPENED successfully!');
     clearTimeout(channelTimeout);
     channelOpened = true;
 
-    console.log('[OPENAI-REALTIME] Sending session.update with system prompt, modalities, and tools');
     const sessionUpdate = {
       type: 'session.update',
       session: {
@@ -587,8 +538,6 @@ Be conversational and friendly. Always explain what the coding assistant found i
       },
     };
     dataChannel.send(JSON.stringify(sessionUpdate));
-
-    console.log('[OPENAI-REALTIME] Initial setup complete - channel ready for use');
     readyResolve();
   };
 
@@ -603,17 +552,13 @@ Be conversational and friendly. Always explain what the coding assistant found i
   (dataChannel as any).onopen = handleOpen;
   (dataChannel as any).onerror = handleError;
 
-  console.log('[OPENAI-REALTIME] Creating SDP offer for OpenAI...');
   const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
   await pc.setLocalDescription(offer);
-  console.log('[OPENAI-REALTIME] Local description set - awaiting ICE candidates');
   await waitForIceGatheringComplete(pc, 'OPENAI-REALTIME');
 
   const offerSdp = pc.localDescription?.sdp ?? offer.sdp!;
-  const candidateCount = (offerSdp.match(/a=candidate/g) || []).length;
-  console.log('[OPENAI-REALTIME] SDP ready with ICE candidates:', candidateCount, 'length:', offerSdp.length);
 
-  console.log('[OPENAI-REALTIME] Sending offer to OpenAI API, model:', env.REALTIME_MODEL);
+  console.log('[OPENAI-REALTIME] Connecting to OpenAI, model:', env.REALTIME_MODEL);
   const answer = await axios.post<string>(
     `https://api.openai.com/v1/realtime?model=${env.REALTIME_MODEL}`,
     offerSdp,
@@ -626,13 +571,10 @@ Be conversational and friendly. Always explain what the coding assistant found i
       timeout: 15_000,
     },
   );
-  console.log('[OPENAI-REALTIME] Received SDP answer from OpenAI, length:', answer.data.length);
 
-  console.log('[OPENAI-REALTIME] Setting remote description...');
   await pc.setRemoteDescription({ type: 'answer', sdp: answer.data });
-  console.log('[OPENAI-REALTIME] Remote description set, waiting for channel ready...');
   await channelReady;
-  console.log('[OPENAI-REALTIME] Channel ready confirmed!');
+  console.log('[OPENAI-REALTIME] Connected');
 
   const sendUserAudio = (frame: RealtimeAudioFrame) => {
     audioSource.onData(frame);
@@ -640,46 +582,11 @@ Be conversational and friendly. Always explain what the coding assistant found i
 
   const onAssistantAudio = (handler: (frame: RealtimeAudioFrame) => void) => {
     if (audioSink) {
-      console.log('[OPENAI-REALTIME] Audio sink available - attaching handler immediately');
-      audioSink.ondata = (frame: RealtimeAudioFrame) => {
-        audioFrameReceived++;
-        if (audioFrameReceived === 1) {
-          console.log(
-            '[OPENAI-REALTIME] First assistant frame - sampleRate:',
-            (frame as any)?.sampleRate,
-            'channels:',
-            (frame as any)?.channelCount,
-            'frames:',
-            (frame as any)?.numberOfFrames,
-          );
-        }
-        if (audioFrameReceived % 100 === 0) {
-          console.log('[OPENAI-REALTIME] Assistant audio frames received:', audioFrameReceived);
-        }
-        handler(frame);
-      };
+      audioSink.ondata = handler;
     } else {
-      console.log('[OPENAI-REALTIME] Audio sink not ready yet - polling every 100ms...');
       const interval = setInterval(() => {
         if (audioSink) {
-          console.log('[OPENAI-REALTIME] Audio sink now available - attaching handler');
-          audioSink.ondata = (frame: RealtimeAudioFrame) => {
-            audioFrameReceived++;
-            if (audioFrameReceived === 1) {
-              console.log(
-                '[OPENAI-REALTIME] First assistant frame - sampleRate:',
-                (frame as any)?.sampleRate,
-                'channels:',
-                (frame as any)?.channelCount,
-                'frames:',
-                (frame as any)?.numberOfFrames,
-              );
-            }
-            if (audioFrameReceived % 100 === 0) {
-              console.log('[OPENAI-REALTIME] Assistant audio frames received:', audioFrameReceived);
-            }
-            handler(frame);
-          };
+          audioSink.ondata = handler;
           clearInterval(interval);
         }
       }, 100);
@@ -688,10 +595,8 @@ Be conversational and friendly. Always explain what the coding assistant found i
 
   const sendEvent = (event: Record<string, unknown>) => {
     if (!channelOpened) {
-      console.error('[OPENAI-REALTIME] Attempted to send event before channel opened:', event.type);
       throw new Error('Realtime data channel not ready yet');
     }
-    console.log('[OPENAI-REALTIME] Sending event:', event.type);
     dataChannel.send(JSON.stringify(event));
   };
 
@@ -715,29 +620,23 @@ Be conversational and friendly. Always explain what the coding assistant found i
   };
 
   const close = () => {
-    console.log('[OPENAI-REALTIME] Closing Realtime session - cleanup started');
+    console.log('[OPENAI-REALTIME] Closing session');
     try {
       if (audioSink) {
-        console.log('[OPENAI-REALTIME] Stopping audio sink');
         audioSink.stop();
       }
-      console.log('[OPENAI-REALTIME] Stopping audio track');
       track.stop();
-      console.log('[OPENAI-REALTIME] Clearing', textResponseTrackers.size, 'pending text response trackers');
       for (const [responseId, tracker] of textResponseTrackers.entries()) {
         if (tracker.timeout) clearTimeout(tracker.timeout);
         tracker.reject(new Error(`Session closed before completing response ${responseId}`));
       }
       textResponseTrackers.clear();
-      console.log('[OPENAI-REALTIME] Closing peer connection');
       pc.close();
-      console.log('[OPENAI-REALTIME] Cleanup complete - session closed');
     } catch (err) {
       console.error('[OPENAI-REALTIME] Error during cleanup:', err);
     }
   };
 
-  console.log('[OPENAI-REALTIME] Returning RealtimeSession object');
   return {
     peerConnection: pc,
     audioSink,

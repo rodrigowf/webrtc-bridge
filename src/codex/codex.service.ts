@@ -67,7 +67,7 @@ async function ensureThread(): Promise<Thread> {
   if (!currentThread) {
     const { Codex } = codexModule;
     const codex = new Codex();
-    console.log('[CODEX] Starting new Codex thread (approvalPolicy=never, workspace-write, network on)');
+    console.log('[CODEX] Starting new thread');
     currentThread = codex.startThread({
       workingDirectory: process.cwd(),
       skipGitRepoCheck: true,
@@ -84,34 +84,27 @@ export function getCurrentThreadId() {
 }
 
 export async function runCodex(prompt: string): Promise<CodexRunResult> {
-  console.log('[CODEX] runCodex called, prompt length:', prompt?.length ?? 0);
   const thread = await ensureThread();
   if (currentAbort) {
-    console.log('[CODEX] Aborting previous Codex turn before starting new one');
-    // Cancel any previous in-flight turn before starting a new one.
     currentAbort.abort();
   }
 
   const abortController = new AbortController();
   currentAbort = abortController;
 
-  console.log('[CODEX] Starting streamed run...');
+  console.log('[CODEX] Running:', prompt?.slice(0, 80));
   const { events } = await thread.runStreamed(prompt, { signal: abortController.signal } as any);
   const items: ThreadEvent[] = [];
   let finalResponse = '';
 
   try {
     for await (const event of events) {
-      // Log ALL events for debugging
-      console.log('[CODEX] Event:', event.type, JSON.stringify(event).slice(0, 300));
-
+      console.log('[CODEX]', event.type);
       if (event.type === 'thread.started') {
         lastThreadId = event.thread_id;
-        console.log('[CODEX] Thread started:', lastThreadId);
       }
       if (event.type === 'item.completed' && (event.item as any)?.type === 'agent_message') {
         finalResponse = (event.item as any).text ?? finalResponse;
-        console.log('[CODEX] Agent message completed:', finalResponse?.slice(0, 160));
       }
       items.push(event);
       broadcast('thread_event', event);
@@ -139,7 +132,7 @@ export async function runCodex(prompt: string): Promise<CodexRunResult> {
     };
   }
 
-  console.log('[CODEX] Turn completed successfully, response length:', finalResponse?.length ?? 0);
+  console.log('[CODEX] Done');
   currentAbort = null;
   return {
     status: 'ok',
