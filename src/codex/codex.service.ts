@@ -1,6 +1,11 @@
 import { performance } from 'node:perf_hooks';
 import { formatCodexEvent } from '../utils/log-formatter.js';
 
+// Get the user's working directory (set by CLI before chdir to package root)
+function getUserWorkingDir(): string {
+  return (globalThis as any).__USER_WORKING_DIR__ || process.cwd();
+}
+
 type CodexModule = typeof import('@openai/codex-sdk');
 type Thread = import('@openai/codex-sdk').Thread;
 type ThreadEvent = import('@openai/codex-sdk').ThreadEvent;
@@ -68,9 +73,10 @@ async function ensureThread(): Promise<Thread> {
   if (!currentThread) {
     const { Codex } = codexModule;
     const codex = new Codex();
-    console.log('[CODEX] Starting new thread');
+    const workingDir = getUserWorkingDir();
+    console.log('[CODEX] Starting new thread in:', workingDir);
     currentThread = codex.startThread({
-      workingDirectory: process.cwd(),
+      workingDirectory: workingDir,
       skipGitRepoCheck: true,
       sandboxMode: 'workspace-write',
       approvalPolicy: 'never',

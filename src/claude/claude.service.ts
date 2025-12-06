@@ -1,6 +1,11 @@
 import { performance } from 'node:perf_hooks';
 import { formatClaudeMessage } from '../utils/log-formatter.js';
 
+// Get the user's working directory (set by CLI before chdir to package root)
+function getUserWorkingDir(): string {
+  return (globalThis as any).__USER_WORKING_DIR__ || process.cwd();
+}
+
 type ClaudeAgentModule = typeof import('@anthropic-ai/claude-agent-sdk');
 type SDKSession = import('@anthropic-ai/claude-agent-sdk').SDKSession;
 
@@ -232,11 +237,13 @@ export async function runClaude(prompt: string): Promise<ClaudeRunResult> {
   let finalResponse = '';
 
   try {
+    const workingDir = getUserWorkingDir();
+    console.log('[CLAUDE] Working directory:', workingDir);
     const queryStream = mod.query({
       prompt,
       options: {
         abortController,
-        cwd: process.cwd(),
+        cwd: workingDir,
         maxTurns: 10,
       },
     });
