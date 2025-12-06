@@ -412,6 +412,43 @@ function handleClaudeEvent(data) {
 
 let currentClaudeStreamingEl = null;
 
+function getToolDetail(toolName, input) {
+  if (!input) return '';
+
+  switch (toolName) {
+    case 'Read':
+      return input.file_path ? shortenPath(input.file_path) : '';
+    case 'Write':
+      return input.file_path ? shortenPath(input.file_path) : '';
+    case 'Edit':
+      return input.file_path ? shortenPath(input.file_path) : '';
+    case 'Glob':
+      return input.pattern || '';
+    case 'Grep':
+      const pattern = input.pattern ? `"${input.pattern}"` : '';
+      const glob = input.glob ? ` in ${input.glob}` : '';
+      return pattern + glob;
+    case 'Bash':
+      const cmd = input.command || '';
+      return cmd.length > 60 ? cmd.slice(0, 60) + '...' : cmd;
+    case 'Task':
+      return input.description || '';
+    case 'WebFetch':
+      return input.url || '';
+    case 'WebSearch':
+      return input.query ? `"${input.query}"` : '';
+    default:
+      return '';
+  }
+}
+
+function shortenPath(filePath) {
+  if (!filePath) return '';
+  const parts = filePath.split('/');
+  if (parts.length <= 3) return filePath;
+  return '.../' + parts.slice(-2).join('/');
+}
+
 function handleClaudeMessage(message) {
   if (!message) return;
 
@@ -432,13 +469,8 @@ function handleClaudeMessage(message) {
         if (block.type === 'text') {
           finalizeClaudeStreamingMessage(block.text);
         } else if (block.type === 'tool_use') {
-          appendClaudeLine('⚙️ Tool: ' + block.name, 'function');
-          if (block.input) {
-            const inputStr = typeof block.input === 'string' ? block.input : JSON.stringify(block.input);
-            if (inputStr.length > 100) {
-              appendClaudeLine('📥 ' + inputStr.slice(0, 100) + '...', 'output', '📥 ' + inputStr);
-            }
-          }
+          const toolDetail = getToolDetail(block.name, block.input);
+          appendClaudeLine('⚙️ Tool: ' + block.name + (toolDetail ? ' - ' + toolDetail : ''), 'function');
         }
       }
       break;
