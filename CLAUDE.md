@@ -95,7 +95,7 @@ Create `.env` from `.env.example`:
 ```env
 OPENAI_API_KEY=sk-proj-...    # Required
 REALTIME_MODEL=gpt-4o-realtime-preview-2024-10-01
-PORT=8080
+PORT=8765
 ```
 
 ## Logging Prefixes

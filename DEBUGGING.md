@@ -35,14 +35,14 @@ source ~/.nvm/nvm.sh && npm start
 You'll immediately see detailed startup logs:
 ```
 [CONFIG] Loading environment configuration...
-[CONFIG] PORT: 8080
+[CONFIG] PORT: 8765
 [CONFIG] OPENAI_API_KEY: sk-proj-I0...
 [CONFIG] REALTIME_MODEL: gpt-realtime
 [CONFIG] Configuration validated successfully
 [SERVER] Initializing Express application...
 [SERVER] Setting up middleware...
 [SERVER] Static files served from: /home/user/project/public
-Server listening on http://localhost:8080
+Server listening on http://localhost:8765
 ```
 
 Leave this running and watch for connection logs when you start testing.
@@ -155,11 +155,11 @@ Run with `npm run test:e2e:debug` to get:
 
 ### Browser doesn't open
 - Make sure Playwright is installed: `npx playwright install chromium`
-- Check that no other process is using port 8080
+- Check that no other process is using port 8765
 
 ### No backend logs
 - Ensure server is running in Terminal 1
-- Check `http://localhost:8080/healthz` returns `{"status":"ok"}`
+- Check `http://localhost:8765/healthz` returns `{"status":"ok"}`
 - Look for `[CONFIG]` and `[SERVER]` logs at startup
 
 ### Connection fails

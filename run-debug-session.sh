@@ -21,8 +21,8 @@ else
 fi
 
 # Check if server is already running
-if lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
-    echo "✓ Server is already running on port 8080"
+if lsof -Pi :8765 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+    echo "✓ Server is already running on port 8765"
     echo ""
     echo "┌────────────────────────────────────────────────────────────────┐"
     echo "│  READY TO START INTERACTIVE TEST                              │"
@@ -32,7 +32,7 @@ if lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
     echo "  source ~/.nvm/nvm.sh && npm run test:interactive"
     echo ""
 else
-    echo "✗ Server is not running on port 8080"
+    echo "✗ Server is not running on port 8765"
     echo ""
     echo "┌────────────────────────────────────────────────────────────────┐"
     echo "│  SETUP INSTRUCTIONS                                            │"

@@ -17,7 +17,7 @@ Persistent notes the assistant should read on startup so context survives across
 
 ## Project Details
 - App: WebRTC <-> OpenAI Realtime voice bridge (Node.js + TypeScript backend, minimal frontend UI).
-- Default port: 8080 (configurable via .env PORT).
+- Default port: 8765 (configurable via .env PORT).
 - CLI: `vcode` -> `dist/cli.js` starts the built server.
 - Build/dev: `npm run dev`, `npm run build`, `npm start`.
 - Tests: `npm test` (healthz + Codex endpoints), Playwright E2E available.
@@ -26,3 +26,7 @@ Persistent notes the assistant should read on startup so context survives across
 - Initialized context memory; entries will be appended automatically on each assistant startup.
 - 2025-12-06T19:09:34.332Z UTC - Started OpenAI Realtime session (voice bridge)
 - 2025-12-06T19:22:21.321Z UTC - Started OpenAI Realtime session (voice bridge)
+- 2025-12-07T10:28:31.462Z UTC - Started OpenAI Realtime session (voice bridge)
+- 2025-12-07T10:37:32.374Z UTC - Started OpenAI Realtime session (voice bridge)
+- 2025-12-07T10:40:12.832Z UTC - Started OpenAI Realtime session (voice bridge)
+- 2025-12-07T10:43:29.788Z UTC - Started OpenAI Realtime session (voice bridge)

@@ -87,8 +87,8 @@ test.describe('WebRTC Bridge - Interactive Debug Session', () => {
     console.log('\x1b[90m─────────────────────────────────────────────────────────────────\x1b[0m\n');
 
     // Navigate to the application
-    console.log('\x1b[1m[ACTION]\x1b[0m Navigating to http://localhost:8080...\n');
-    await page.goto('http://localhost:8080');
+    console.log('\x1b[1m[ACTION]\x1b[0m Navigating to http://localhost:8765...\n');
+    await page.goto('http://localhost:8765');
 
     // Verify page loaded
     await expect(page.locator('h1')).toContainText('Realtime Voice Bridge');

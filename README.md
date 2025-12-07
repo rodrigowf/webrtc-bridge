@@ -31,7 +31,7 @@ Edit `.env`:
 ```env
 OPENAI_API_KEY=sk-REPLACE_ME
 REALTIME_MODEL=gpt-4o-realtime-preview-2024-10-01
-PORT=8080
+PORT=8765
 ```
 
 ## Running in development
@@ -40,7 +40,7 @@ PORT=8080
 npm run dev
 ```
 
-Then open `http://localhost:8080` in your browser. The page auto-connects and starts with both mic and AI muted. Click **Unmute** to enable your microphone and **Unmute AI** to hear the assistant.
+Then open `http://localhost:8765` in your browser. The page auto-connects and starts with both mic and AI muted. Click **Unmute** to enable your microphone and **Unmute AI** to hear the assistant.
 
 ## UI Controls
 

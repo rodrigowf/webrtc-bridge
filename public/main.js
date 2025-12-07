@@ -138,8 +138,18 @@ async function startCall() {
       startMeters();
     };
 
-    state.pc.oniceconnectionstatechange = () => console.log('[FRONTEND] ICE connection state:', state.pc.iceConnectionState);
-    state.pc.onconnectionstatechange = () => console.log('[FRONTEND] Connection state:', state.pc.connectionState);
+    state.pc.oniceconnectionstatechange = () => {
+      console.log('[FRONTEND] ICE connection state:', state.pc.iceConnectionState);
+      if (state.pc.iceConnectionState === 'disconnected' || state.pc.iceConnectionState === 'failed') {
+        setStatus('Disconnected', 'Connection lost', 'error');
+      }
+    };
+    state.pc.onconnectionstatechange = () => {
+      console.log('[FRONTEND] Connection state:', state.pc.connectionState);
+      if (state.pc.connectionState === 'disconnected' || state.pc.connectionState === 'failed') {
+        setStatus('Disconnected', 'Connection lost', 'error');
+      }
+    };
 
     const offer = await state.pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
     await state.pc.setLocalDescription(offer);
@@ -322,7 +332,8 @@ function connectCodexEvents() {
 
   codexEventSource.onerror = (err) => {
     console.error('[FRONTEND] Codex SSE error:', err);
-    setCodexStatus('error', 'Connection lost. Reconnecting...');
+    setCodexStatus('error', 'Offline');
+    setClaudeStatus('error', 'Offline');
   };
 }
 

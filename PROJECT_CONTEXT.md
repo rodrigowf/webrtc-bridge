@@ -70,7 +70,7 @@ Configuration is handled in `src/config.env.ts` using `dotenv`.
 
 **Required Environment Variables:**
 - `OPENAI_API_KEY`: Your OpenAI API key.
-- `PORT`: (Optional) Server port, defaults to 8080.
+- `PORT`: (Optional) Server port, defaults to 8765.
 - `REALTIME_MODEL`: (Optional) Defaults to `gpt-realtime`.
 
 **Behavior:**
@@ -160,7 +160,7 @@ Configuration is handled in `src/config.env.ts` using `dotenv`.
     npm run dev
     ```
     - This builds the project (`tsc`) and runs `node dist/server.js`.
-    - Access at `http://localhost:8080`.
+    - Access at `http://localhost:8765`.
 4.  **Build & Start (Production):**
     ```bash
     npm run build

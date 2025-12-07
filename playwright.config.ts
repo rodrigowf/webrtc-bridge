@@ -40,7 +40,7 @@ export default defineConfig({
 
   use: {
     // Base URL for the application
-    baseURL: 'http://localhost:8080',
+    baseURL: 'http://localhost:8765',
 
     // Headed mode - browser will be visible
     headless: false,
@@ -92,7 +92,7 @@ export default defineConfig({
   // Run local server before tests (optional - comment out if running manually)
   // webServer: {
   //   command: 'npm start',
-  //   url: 'http://localhost:8080',
+  //   url: 'http://localhost:8765',
   //   timeout: 120_000,
   //   reuseExistingServer: true,
   // },
