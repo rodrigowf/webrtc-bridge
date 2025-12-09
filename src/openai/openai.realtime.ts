@@ -1,9 +1,26 @@
 import axios from 'axios';
 import wrtc, { type MediaStreamTrack, type RTCRtpReceiver, type RTCDataChannel, type RTCPeerConnection } from 'wrtc';
 import { env } from '../config.env.js';
-import { runCodex, subscribeCodexEvents } from '../codex/codex.service.js';
-import { queryClaudeSession } from '../claude/claude.service.js';
-import { loadContextMemory, recordMemoryRun } from '../memory/context.memory.js';
+import {
+  promptCodex,
+  pauseCodex,
+  compactCodex,
+  resetCodex,
+  subscribeCodexEvents,
+} from '../codex/codex.service.js';
+import {
+  promptClaude,
+  pauseClaude,
+  compactClaude,
+  resetClaude,
+} from '../claude/claude.service.js';
+import { setShowInnerThoughts } from '../config/verbosity.js';
+import { loadContextMemory, recordMemoryRun, saveMemory } from '../memory/context.memory.js';
+import {
+  getCurrentConversation,
+  addTranscriptEntry,
+  formatConversationHistory,
+} from '../conversations/conversation.storage.js';
 
 const RTCPeerConnectionClass = wrtc.RTCPeerConnection;
 const { RTCAudioSink, RTCAudioSource } = wrtc.nonstandard;
@@ -140,6 +157,13 @@ function broadcastTranscript(type: TranscriptEvent['type'], text: string, role: 
       console.error('[OPENAI-REALTIME] Transcript listener error:', err);
     }
   }
+
+  // Save completed transcripts to conversation storage
+  if (type === 'transcript_done' || type === 'user_transcript_done') {
+    addTranscriptEntry({ role, text, timestamp: event.timestamp }).catch(err => {
+      console.error('[OPENAI-REALTIME] Failed to save transcript entry:', err);
+    });
+  }
 }
 
 export type RealtimeAudioFrame = RTCAudioSinkEvent;
@@ -181,6 +205,67 @@ export type RealtimeSession = {
   close: () => void;
 };
 
+/**
+ * Build the system prompt with context memory and conversation history
+ */
+function buildSystemPrompt(contextMemory: string, conversationHistory: string): string {
+  return `# Voice Assistant for Code
+
+You are a voice-controlled coding assistant that orchestrates two AI agents: **Codex** (OpenAI) and **Claude Code** (Anthropic).
+
+## Conversation Behavior
+
+**CRITICAL: Never interrupt the user.** Wait for the user to finish speaking completely before responding. Be patient and let them complete their thoughts, even if there are pauses. Only respond when they have clearly finished.
+
+Keep responses concise and natural for voice. Avoid lengthy explanations unless asked.
+
+## Available Tools
+
+### run_codex
+Fast agent for quick tasks:
+- Reading and analyzing files
+- Simple code searches (grep, find)
+- Quick questions about the codebase
+- Small, focused tasks
+
+### run_claude
+Powerful agent for complex work:
+- Multi-step refactoring
+- Implementing new features
+- Complex debugging
+- Architectural changes
+- Tasks requiring deep analysis
+
+### save_memory
+Persist information to CONTEXT_MEMORY.md (survives restarts).
+
+## Agent Selection Rules
+
+1. **User specifies agent** → Use what they asked for ("use Claude", "ask Codex")
+2. **Complex/multi-step task** → run_claude
+3. **Quick lookup or simple task** → run_codex
+4. **Uncertain** → Default to run_codex (faster), escalate to run_claude if needed
+
+## Memory System
+
+Your persistent memory is loaded below. When the user says "remember this", "save this", or similar:
+- Use save_memory to update CONTEXT_MEMORY.md
+- The function REPLACES the entire file - include ALL content you want to keep
+- Keep it organized with clear sections
+
+---
+## Persistent Memory (CONTEXT_MEMORY.md)
+${contextMemory}
+---
+
+${conversationHistory ? `## Recent Conversation History\n${conversationHistory}\n---\n\n` : ''}## Response Style
+
+- Be conversational and friendly
+- Summarize what the coding agents found in plain language
+- Ask clarifying questions if the request is ambiguous
+- Confirm before destructive operations (delete, overwrite)`;
+}
+
 // Internal function - use realtimeSessionManager.getSession() instead
 async function connectRealtimeSessionInternal(): Promise<RealtimeSession> {
   let contextMemory = '';
@@ -192,26 +277,19 @@ async function connectRealtimeSessionInternal(): Promise<RealtimeSession> {
     contextMemory = 'Context memory unavailable (read/write error).';
   }
 
-  const systemPrompt = `You are a helpful voice assistant with access to two AI coding assistants: Codex (OpenAI) and Claude Code (Anthropic).
+  // Load conversation history
+  let conversationHistory = '';
+  try {
+    const conversation = await getCurrentConversation();
+    conversationHistory = formatConversationHistory(conversation);
+    if (conversationHistory) {
+      console.log('[OPENAI-REALTIME] Loaded conversation history:', conversation.id, 'with', conversation.transcript.length, 'messages');
+    }
+  } catch (err) {
+    console.error('[OPENAI-REALTIME] Failed to load conversation history:', err);
+  }
 
-Persistent context memory from CONTEXT_MEMORY.md:
-${contextMemory}
-
-You can help users with:
-- Voice conversations and general questions
-- Code analysis and understanding (use run_codex or run_claude function)
-- Finding and reading files in the codebase (use run_codex or run_claude function)
-- Explaining how code works (use run_codex or run_claude function)
-- Searching for patterns or TODO items (use run_codex or run_claude function)
-- Complex multi-step coding tasks (use run_claude for more complex tasks)
-
-When a user asks about code, files, or development tasks:
-- Use run_codex for quick code analysis and simple tasks
-- Use run_claude for complex multi-step tasks, refactoring, or when deeper analysis is needed
-- If the user explicitly asks for Claude or Claude Code, use run_claude
-- If the user explicitly asks for Codex, use run_codex
-
-Be conversational and friendly. Always explain what the coding assistant found in a clear, natural way.`;
+  const systemPrompt = buildSystemPrompt(contextMemory, conversationHistory);
 
   const pc = new RTCPeerConnectionClass({
     bundlePolicy: 'max-bundle',
@@ -321,114 +399,180 @@ Be conversational and friendly. Always explain what the coding assistant found i
           return null;
         };
 
-        if (functionName === 'run_codex') {
-          const codexPrompt = extractPrompt(rawArgs);
+        // Helper to send function result back to OpenAI
+        const sendFunctionResult = (output: string) => {
+          const functionResult = {
+            type: 'conversation.item.create',
+            item: {
+              type: 'function_call_output',
+              call_id: callId,
+              output: JSON.stringify({ result: output }),
+            },
+          };
+          dataChannel.send(JSON.stringify(functionResult));
+          dataChannel.send(JSON.stringify({ type: 'response.create' }));
+        };
 
-          if (!codexPrompt) {
-            console.error('[OPENAI-REALTIME] run_codex called without a valid prompt, raw args:', rawArgs);
-            const errorResult = {
-              type: 'conversation.item.create',
-              item: {
-                type: 'function_call_output',
-                call_id: callId,
-                output: JSON.stringify({ error: 'Codex prompt was missing or invalid.' }),
-              },
-            };
-            dataChannel.send(JSON.stringify(errorResult));
-            dataChannel.send(JSON.stringify({ type: 'response.create' }));
+        const sendFunctionError = (error: string) => {
+          const errorResult = {
+            type: 'conversation.item.create',
+            item: {
+              type: 'function_call_output',
+              call_id: callId,
+              output: JSON.stringify({ error }),
+            },
+          };
+          dataChannel.send(JSON.stringify(errorResult));
+          dataChannel.send(JSON.stringify({ type: 'response.create' }));
+        };
+
+        // Codex functions
+        if (functionName === 'codex_prompt') {
+          const prompt = extractPrompt(rawArgs);
+          if (!prompt) {
+            sendFunctionError('Codex prompt was missing or invalid.');
             break;
           }
-
-          console.log('[OPENAI-REALTIME] Running Codex:', codexPrompt.slice(0, 100));
-
-          // Execute Codex asynchronously and send result back
+          console.log('[OPENAI-REALTIME] Codex prompt:', prompt.slice(0, 100));
           (async () => {
             try {
-              const result = await runCodex(codexPrompt);
+              const result = await promptCodex(prompt);
               const output = result.status === 'ok'
-                ? result.finalResponse || 'Codex execution completed but no response was generated.'
+                ? result.finalResponse || 'Codex execution completed.'
                 : `Codex error: ${result.error || 'Unknown error'}`;
-
-              // Send function call result back to assistant
-              const functionResult = {
-                type: 'conversation.item.create',
-                item: {
-                  type: 'function_call_output',
-                  call_id: callId,
-                  output: JSON.stringify({ result: output }),
-                },
-              };
-              dataChannel.send(JSON.stringify(functionResult));
-
-              // Trigger assistant to respond with the result
-              dataChannel.send(JSON.stringify({ type: 'response.create' }));
+              sendFunctionResult(output);
             } catch (err: any) {
-              console.error('[OPENAI-REALTIME] Error executing Codex:', err);
-              const errorResult = {
-                type: 'conversation.item.create',
-                item: {
-                  type: 'function_call_output',
-                  call_id: callId,
-                  output: JSON.stringify({ error: err?.message || 'Failed to execute Codex' }),
-                },
-              };
-              dataChannel.send(JSON.stringify(errorResult));
-              dataChannel.send(JSON.stringify({ type: 'response.create' }));
+              console.error('[OPENAI-REALTIME] Codex error:', err);
+              sendFunctionError(err?.message || 'Failed to execute Codex');
             }
           })();
-        } else if (functionName === 'run_claude') {
-          const claudePrompt = extractPrompt(rawArgs);
-
-          if (!claudePrompt) {
-            console.error('[OPENAI-REALTIME] run_claude called without a valid prompt, raw args:', rawArgs);
-            const errorResult = {
-              type: 'conversation.item.create',
-              item: {
-                type: 'function_call_output',
-                call_id: callId,
-                output: JSON.stringify({ error: 'Claude prompt was missing or invalid.' }),
-              },
-            };
-            dataChannel.send(JSON.stringify(errorResult));
-            dataChannel.send(JSON.stringify({ type: 'response.create' }));
-            break;
-          }
-
-          console.log('[OPENAI-REALTIME] Running Claude:', claudePrompt.slice(0, 100));
-
-          // Execute Claude asynchronously using persistent session (maintains conversation history)
+        } else if (functionName === 'codex_pause') {
+          console.log('[OPENAI-REALTIME] Codex pause');
+          const result = pauseCodex();
+          sendFunctionResult(`Codex ${result.status}. Thread preserved.`);
+        } else if (functionName === 'codex_compact') {
+          console.log('[OPENAI-REALTIME] Codex compact');
           (async () => {
             try {
-              const result = await queryClaudeSession(claudePrompt);
-              const output = result.status === 'ok'
-                ? result.finalResponse || 'Claude execution completed but no response was generated.'
-                : `Claude error: ${result.error || 'Unknown error'}`;
-
-              // Send function call result back to assistant
-              const functionResult = {
-                type: 'conversation.item.create',
-                item: {
-                  type: 'function_call_output',
-                  call_id: callId,
-                  output: JSON.stringify({ result: output }),
-                },
-              };
-              dataChannel.send(JSON.stringify(functionResult));
-
-              // Trigger assistant to respond with the result
-              dataChannel.send(JSON.stringify({ type: 'response.create' }));
+              const result = await compactCodex();
+              if (result.status === 'ok') {
+                sendFunctionResult('Codex context compacted successfully. Ready to continue.');
+              } else {
+                sendFunctionError(result.error || 'Failed to compact Codex context');
+              }
             } catch (err: any) {
-              console.error('[OPENAI-REALTIME] Error executing Claude:', err);
-              const errorResult = {
-                type: 'conversation.item.create',
-                item: {
-                  type: 'function_call_output',
-                  call_id: callId,
-                  output: JSON.stringify({ error: err?.message || 'Failed to execute Claude' }),
-                },
-              };
-              dataChannel.send(JSON.stringify(errorResult));
-              dataChannel.send(JSON.stringify({ type: 'response.create' }));
+              console.error('[OPENAI-REALTIME] Codex compact error:', err);
+              sendFunctionError(err?.message || 'Failed to compact Codex');
+            }
+          })();
+        } else if (functionName === 'codex_reset') {
+          console.log('[OPENAI-REALTIME] Codex reset');
+          resetCodex();
+          sendFunctionResult('Codex reset. All context cleared.');
+        }
+        // Claude functions
+        else if (functionName === 'claude_prompt') {
+          const prompt = extractPrompt(rawArgs);
+          if (!prompt) {
+            sendFunctionError('Claude prompt was missing or invalid.');
+            break;
+          }
+          console.log('[OPENAI-REALTIME] Claude prompt:', prompt.slice(0, 100));
+          (async () => {
+            try {
+              const result = await promptClaude(prompt);
+              const output = result.status === 'ok'
+                ? result.finalResponse || 'Claude execution completed.'
+                : `Claude error: ${result.error || 'Unknown error'}`;
+              sendFunctionResult(output);
+            } catch (err: any) {
+              console.error('[OPENAI-REALTIME] Claude error:', err);
+              sendFunctionError(err?.message || 'Failed to execute Claude');
+            }
+          })();
+        } else if (functionName === 'claude_pause') {
+          console.log('[OPENAI-REALTIME] Claude pause');
+          (async () => {
+            try {
+              const result = await pauseClaude();
+              sendFunctionResult(`Claude ${result.status}. Session preserved.`);
+            } catch (err: any) {
+              console.error('[OPENAI-REALTIME] Claude pause error:', err);
+              sendFunctionError(err?.message || 'Failed to pause Claude');
+            }
+          })();
+        } else if (functionName === 'claude_compact') {
+          console.log('[OPENAI-REALTIME] Claude compact');
+          (async () => {
+            try {
+              const result = await compactClaude();
+              if (result.status === 'ok') {
+                sendFunctionResult('Claude context compacted successfully. Ready to continue.');
+              } else {
+                sendFunctionError(result.error || 'Failed to compact Claude context');
+              }
+            } catch (err: any) {
+              console.error('[OPENAI-REALTIME] Claude compact error:', err);
+              sendFunctionError(err?.message || 'Failed to compact Claude');
+            }
+          })();
+        } else if (functionName === 'claude_reset') {
+          console.log('[OPENAI-REALTIME] Claude reset');
+          (async () => {
+            try {
+              await resetClaude();
+              sendFunctionResult('Claude reset. All context cleared.');
+            } catch (err: any) {
+              console.error('[OPENAI-REALTIME] Claude reset error:', err);
+              sendFunctionError(err?.message || 'Failed to reset Claude');
+            }
+          })();
+        }
+        // Inner thoughts control
+        else if (functionName === 'show_inner_thoughts') {
+          let show: boolean | undefined;
+          try {
+            const args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : rawArgs;
+            show = args?.show;
+          } catch {
+            show = undefined;
+          }
+          if (typeof show !== 'boolean') {
+            sendFunctionError('show parameter must be a boolean (true or false).');
+            break;
+          }
+          console.log('[OPENAI-REALTIME] Set show inner thoughts:', show);
+          const result = setShowInnerThoughts(show);
+          const modeDescription = result.showInnerThoughts
+            ? 'Inner thoughts ON - you will now see detailed reasoning, tool calls, and intermediate messages from agents.'
+            : 'Inner thoughts OFF - you will now only see final responses from agents.';
+          sendFunctionResult(modeDescription);
+        }
+        // Memory saving
+        else if (functionName === 'save_memory') {
+          let content: string | undefined;
+          try {
+            const args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : rawArgs;
+            content = args?.content;
+          } catch {
+            content = undefined;
+          }
+          if (!content) {
+            sendFunctionError('content is required.');
+            break;
+          }
+          console.log('[OPENAI-REALTIME] Save memory, length:', content.length);
+          (async () => {
+            try {
+              const result = await saveMemory(content);
+              if (result.success) {
+                sendFunctionResult('Memory saved. I will remember this in future sessions.');
+              } else {
+                sendFunctionError(result.error || 'Failed to save memory');
+              }
+            } catch (err: any) {
+              console.error('[OPENAI-REALTIME] Save memory error:', err);
+              sendFunctionError(err?.message || 'Failed to save memory');
             }
           })();
         }
@@ -504,16 +648,17 @@ Be conversational and friendly. Always explain what the coding assistant found i
         voice: 'alloy',
         input_audio_transcription: { model: 'whisper-1' },
         tools: [
+          // Codex tools
           {
             type: 'function',
-            name: 'run_codex',
-            description: 'Run Codex AI assistant (OpenAI) to analyze code, search files, read documentation, or perform quick coding tasks. Use for simple code analysis and quick file searches.',
+            name: 'codex_prompt',
+            description: 'Send a prompt to Codex AI assistant (OpenAI) for code analysis, file searches, or quick coding tasks. Maintains conversation context across calls.',
             parameters: {
               type: 'object',
               properties: {
                 prompt: {
                   type: 'string',
-                  description: 'The task or question for Codex. Be specific about what you want Codex to do (e.g., "analyze the browser-bridge.ts file", "find all TODO comments", "explain how the WebRTC connection works").',
+                  description: 'The task or question for Codex.',
                 },
               },
               required: ['prompt'],
@@ -521,17 +666,86 @@ Be conversational and friendly. Always explain what the coding assistant found i
           },
           {
             type: 'function',
-            name: 'run_claude',
-            description: 'Run Claude Code AI assistant (Anthropic) for complex multi-step coding tasks, refactoring, deep code analysis, or when the user explicitly asks for Claude. Use for more complex tasks requiring deeper reasoning.',
+            name: 'codex_pause',
+            description: 'Pause/interrupt the current Codex execution without losing context. The conversation can be resumed with a new prompt.',
+            parameters: { type: 'object', properties: {} },
+          },
+          {
+            type: 'function',
+            name: 'codex_compact',
+            description: 'Summarize and compact the Codex conversation context. Use when the context is getting too long or to free up memory while preserving key information.',
+            parameters: { type: 'object', properties: {} },
+          },
+          {
+            type: 'function',
+            name: 'codex_reset',
+            description: 'Completely reset Codex, clearing all conversation context. Use when starting a completely new task unrelated to previous work.',
+            parameters: { type: 'object', properties: {} },
+          },
+          // Claude tools
+          {
+            type: 'function',
+            name: 'claude_prompt',
+            description: 'Send a prompt to Claude Code AI assistant (Anthropic) for complex multi-step coding tasks, refactoring, or deep code analysis. Maintains conversation context across calls.',
             parameters: {
               type: 'object',
               properties: {
                 prompt: {
                   type: 'string',
-                  description: 'The task or question for Claude Code. Be specific about what you want Claude to do (e.g., "refactor this function for better performance", "implement a new feature", "debug this complex issue").',
+                  description: 'The task or question for Claude Code.',
                 },
               },
               required: ['prompt'],
+            },
+          },
+          {
+            type: 'function',
+            name: 'claude_pause',
+            description: 'Pause/interrupt the current Claude execution without losing context. The conversation can be resumed with a new prompt.',
+            parameters: { type: 'object', properties: {} },
+          },
+          {
+            type: 'function',
+            name: 'claude_compact',
+            description: 'Summarize and compact the Claude conversation context. Use when the context is getting too long or to free up memory while preserving key information.',
+            parameters: { type: 'object', properties: {} },
+          },
+          {
+            type: 'function',
+            name: 'claude_reset',
+            description: 'Completely reset Claude, clearing all conversation context. Use when starting a completely new task unrelated to previous work.',
+            parameters: { type: 'object', properties: {} },
+          },
+          // Inner thoughts control
+          {
+            type: 'function',
+            name: 'show_inner_thoughts',
+            description: 'Control whether you can see the inner thoughts of Codex and Claude agents. When enabled (true), you see all their reasoning, tool calls, file reads, and intermediate thinking. When disabled (false), you only see final responses. Enable this when you want to understand what the agents are doing step by step.',
+            parameters: {
+              type: 'object',
+              properties: {
+                show: {
+                  type: 'boolean',
+                  description: 'true to see inner thoughts, false to hide them.',
+                },
+              },
+              required: ['show'],
+            },
+          },
+          // Memory tool
+          {
+            type: 'function',
+            name: 'save_memory',
+            description: 'Replace the entire CONTEXT_MEMORY.md file with new content. This file persists across sessions. IMPORTANT: This replaces the whole file, so include ALL information you want to keep (existing + new). The current memory is in your system prompt.',
+            parameters: {
+              type: 'object',
+              properties: {
+                content: {
+                  type: 'string',
+                  description: 'The complete new content for CONTEXT_MEMORY.md. Use markdown format with sections. Include all existing info you want to preserve plus new additions.',
+                },
+              },
+              required: ['content'],
             },
           },
         ],

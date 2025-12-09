@@ -9,24 +9,42 @@ import { getSSLCerts } from './ssl/generate-cert.js';
 import { handleBrowserOffer, handleBrowserDisconnect, getConnectionCount, getConnectionIds } from './webrtc/browser-bridge.js';
 import { realtimeSessionManager } from './openai/openai.realtime.js';
 import {
-  runCodex,
-  stopCodex,
+  promptCodex,
+  pauseCodex,
+  compactCodex,
   resetCodex,
   subscribeCodexEvents,
   getCurrentThreadId,
+  hasActiveThread,
+  isProcessing as isCodexProcessing,
 } from './codex/codex.service.js';
 import {
-  runClaude,
-  stopClaude,
+  promptClaude,
+  pauseClaude,
+  compactClaude,
   resetClaude,
   subscribeClaudeEvents,
   getCurrentSessionId,
-  initClaudeSession,
-  queryClaudeSession,
   hasActiveSession,
+  isProcessing as isClaudeProcessing,
 } from './claude/claude.service.js';
 import { subscribeTranscriptEvents } from './openai/openai.realtime.js';
 import { displayServerInfo } from './utils/network-info.js';
+import {
+  listConversations,
+  loadConversation,
+  createConversation,
+  deleteConversation,
+  getCurrentConversationId,
+  setCurrentConversationId,
+  addTranscriptEntry,
+  type TranscriptEntry,
+} from './conversations/conversation.storage.js';
+import {
+  getShowInnerThoughts,
+  setShowInnerThoughts,
+  shouldSendEvent,
+} from './config/verbosity.js';
 
 // ESM equivalent of __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -114,9 +132,83 @@ app.get('/session/status', (_req, res) => {
   }
 });
 
+// Conversation endpoints
+app.get('/conversations', async (_req, res) => {
+  console.log('[SERVER] /conversations endpoint called');
+  try {
+    const conversations = await listConversations();
+    res.json({
+      conversations,
+      currentId: getCurrentConversationId(),
+    });
+  } catch (err) {
+    console.error('[SERVER] Error listing conversations:', err);
+    res.status(500).json({ error: 'Failed to list conversations' });
+  }
+});
+
+app.get('/conversations/:id', async (req, res) => {
+  const { id } = req.params;
+  console.log('[SERVER] /conversations/:id endpoint called for:', id);
+  try {
+    const conversation = await loadConversation(id);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+    res.json(conversation);
+  } catch (err) {
+    console.error('[SERVER] Error loading conversation:', err);
+    res.status(500).json({ error: 'Failed to load conversation' });
+  }
+});
+
+app.post('/conversations', async (_req, res) => {
+  console.log('[SERVER] POST /conversations endpoint called - creating new conversation');
+  try {
+    const conversation = await createConversation();
+    res.json(conversation);
+  } catch (err) {
+    console.error('[SERVER] Error creating conversation:', err);
+    res.status(500).json({ error: 'Failed to create conversation' });
+  }
+});
+
+app.post('/conversations/:id/select', async (req, res) => {
+  const { id } = req.params;
+  console.log('[SERVER] /conversations/:id/select endpoint called for:', id);
+  try {
+    const conversation = await loadConversation(id);
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+    setCurrentConversationId(id);
+    // Note: Conversation history is loaded into OpenAI session at connection time,
+    // not when switching conversations (switching is disabled during active sessions)
+    res.json({ status: 'ok', conversation });
+  } catch (err) {
+    console.error('[SERVER] Error selecting conversation:', err);
+    res.status(500).json({ error: 'Failed to select conversation' });
+  }
+});
+
+app.delete('/conversations/:id', async (req, res) => {
+  const { id } = req.params;
+  console.log('[SERVER] DELETE /conversations/:id endpoint called for:', id);
+  try {
+    const success = await deleteConversation(id);
+    if (!success) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+    res.json({ status: 'ok' });
+  } catch (err) {
+    console.error('[SERVER] Error deleting conversation:', err);
+    res.status(500).json({ error: 'Failed to delete conversation' });
+  }
+});
+
 // Codex endpoints
-app.post('/codex/run', async (req, res) => {
-  console.log('[SERVER] /codex/run endpoint called');
+app.post('/codex/prompt', async (req, res) => {
+  console.log('[SERVER] /codex/prompt endpoint called');
   const { prompt } = req.body ?? {};
   if (!prompt || typeof prompt !== 'string') {
     console.error('[SERVER] Invalid request: missing or invalid prompt');
@@ -124,27 +216,37 @@ app.post('/codex/run', async (req, res) => {
   }
 
   try {
-    console.log('[SERVER] Calling runCodex with prompt length:', prompt.length);
-    const result = await runCodex(prompt);
-    console.log('[SERVER] Codex run completed with status:', result.status);
+    console.log('[SERVER] Calling promptCodex with prompt length:', prompt.length);
+    const result = await promptCodex(prompt);
+    console.log('[SERVER] Codex prompt completed with status:', result.status);
     res.json(result);
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[SERVER] Error running Codex:', err);
     res.status(500).json({ error: 'Failed to run Codex', status: 'error' });
   }
 });
 
-app.post('/codex/stop', (_req, res) => {
-  console.log('[SERVER] /codex/stop endpoint called');
+app.post('/codex/pause', (_req, res) => {
+  console.log('[SERVER] /codex/pause endpoint called');
   try {
-    const result = stopCodex();
-    console.log('[SERVER] Codex stop result:', result.status);
+    const result = pauseCodex();
+    console.log('[SERVER] Codex pause result:', result.status);
     res.json(result);
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[SERVER] Error stopping Codex:', err);
-    res.status(500).json({ error: 'Failed to stop Codex' });
+    console.error('[SERVER] Error pausing Codex:', err);
+    res.status(500).json({ error: 'Failed to pause Codex' });
+  }
+});
+
+app.post('/codex/compact', async (_req, res) => {
+  console.log('[SERVER] /codex/compact endpoint called');
+  try {
+    const result = await compactCodex();
+    console.log('[SERVER] Codex compact result:', result.status);
+    res.json(result);
+  } catch (err) {
+    console.error('[SERVER] Error compacting Codex:', err);
+    res.status(500).json({ error: 'Failed to compact Codex' });
   }
 });
 
@@ -155,7 +257,6 @@ app.post('/codex/reset', (_req, res) => {
     console.log('[SERVER] Codex reset result:', result.status);
     res.json(result);
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[SERVER] Error resetting Codex:', err);
     res.status(500).json({ error: 'Failed to reset Codex' });
   }
@@ -164,18 +265,20 @@ app.post('/codex/reset', (_req, res) => {
 app.get('/codex/status', (_req, res) => {
   console.log('[SERVER] /codex/status endpoint called');
   try {
-    const threadId = getCurrentThreadId();
-    res.json({ threadId });
+    res.json({
+      threadId: getCurrentThreadId(),
+      hasActiveThread: hasActiveThread(),
+      isProcessing: isCodexProcessing(),
+    });
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[SERVER] Error getting Codex status:', err);
     res.status(500).json({ error: 'Failed to get Codex status' });
   }
 });
 
 // Claude Code endpoints
-app.post('/claude/run', async (req, res) => {
-  console.log('[SERVER] /claude/run endpoint called');
+app.post('/claude/prompt', async (req, res) => {
+  console.log('[SERVER] /claude/prompt endpoint called');
   const { prompt } = req.body ?? {};
   if (!prompt || typeof prompt !== 'string') {
     console.error('[SERVER] Invalid request: missing or invalid prompt');
@@ -183,38 +286,47 @@ app.post('/claude/run', async (req, res) => {
   }
 
   try {
-    console.log('[SERVER] Calling runClaude with prompt length:', prompt.length);
-    const result = await runClaude(prompt);
-    console.log('[SERVER] Claude run completed with status:', result.status);
+    console.log('[SERVER] Calling promptClaude with prompt length:', prompt.length);
+    const result = await promptClaude(prompt);
+    console.log('[SERVER] Claude prompt completed with status:', result.status);
     res.json(result);
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[SERVER] Error running Claude:', err);
     res.status(500).json({ error: 'Failed to run Claude', status: 'error' });
   }
 });
 
-app.post('/claude/stop', (_req, res) => {
-  console.log('[SERVER] /claude/stop endpoint called');
+app.post('/claude/pause', async (_req, res) => {
+  console.log('[SERVER] /claude/pause endpoint called');
   try {
-    const result = stopClaude();
-    console.log('[SERVER] Claude stop result:', result.status);
+    const result = await pauseClaude();
+    console.log('[SERVER] Claude pause result:', result.status);
     res.json(result);
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[SERVER] Error stopping Claude:', err);
-    res.status(500).json({ error: 'Failed to stop Claude' });
+    console.error('[SERVER] Error pausing Claude:', err);
+    res.status(500).json({ error: 'Failed to pause Claude' });
   }
 });
 
-app.post('/claude/reset', (_req, res) => {
+app.post('/claude/compact', async (_req, res) => {
+  console.log('[SERVER] /claude/compact endpoint called');
+  try {
+    const result = await compactClaude();
+    console.log('[SERVER] Claude compact result:', result.status);
+    res.json(result);
+  } catch (err) {
+    console.error('[SERVER] Error compacting Claude:', err);
+    res.status(500).json({ error: 'Failed to compact Claude' });
+  }
+});
+
+app.post('/claude/reset', async (_req, res) => {
   console.log('[SERVER] /claude/reset endpoint called');
   try {
-    const result = resetClaude();
+    const result = await resetClaude();
     console.log('[SERVER] Claude reset result:', result.status);
     res.json(result);
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[SERVER] Error resetting Claude:', err);
     res.status(500).json({ error: 'Failed to reset Claude' });
   }
@@ -223,47 +335,45 @@ app.post('/claude/reset', (_req, res) => {
 app.get('/claude/status', (_req, res) => {
   console.log('[SERVER] /claude/status endpoint called');
   try {
-    const sessionId = getCurrentSessionId();
-    const hasSession = hasActiveSession();
-    res.json({ sessionId, hasActiveSession: hasSession });
+    res.json({
+      sessionId: getCurrentSessionId(),
+      hasActiveSession: hasActiveSession(),
+      isProcessing: isClaudeProcessing(),
+    });
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error('[SERVER] Error getting Claude status:', err);
     res.status(500).json({ error: 'Failed to get Claude status' });
   }
 });
 
-// Claude persistent session endpoints
-app.post('/claude/init', async (_req, res) => {
-  console.log('[SERVER] /claude/init endpoint called');
+// Inner thoughts visibility endpoints
+app.get('/agents/inner-thoughts', (_req, res) => {
+  console.log('[SERVER] /agents/inner-thoughts endpoint called');
   try {
-    const result = await initClaudeSession();
-    console.log('[SERVER] Claude init result:', result.status);
-    res.json(result);
+    res.json({
+      showInnerThoughts: getShowInnerThoughts(),
+    });
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[SERVER] Error initializing Claude session:', err);
-    res.status(500).json({ error: 'Failed to initialize Claude session', status: 'error' });
+    console.error('[SERVER] Error getting inner thoughts setting:', err);
+    res.status(500).json({ error: 'Failed to get inner thoughts setting' });
   }
 });
 
-app.post('/claude/query', async (req, res) => {
-  console.log('[SERVER] /claude/query endpoint called');
-  const { prompt } = req.body ?? {};
-  if (!prompt || typeof prompt !== 'string') {
-    console.error('[SERVER] Invalid request: missing or invalid prompt');
-    return res.status(400).json({ error: 'Missing prompt' });
+app.post('/agents/inner-thoughts', (req, res) => {
+  console.log('[SERVER] POST /agents/inner-thoughts endpoint called');
+  const { show } = req.body ?? {};
+  if (typeof show !== 'boolean') {
+    console.error('[SERVER] Invalid request: show must be a boolean');
+    return res.status(400).json({ error: 'show must be a boolean' });
   }
 
   try {
-    console.log('[SERVER] Calling queryClaudeSession with prompt length:', prompt.length);
-    const result = await queryClaudeSession(prompt);
-    console.log('[SERVER] Claude query completed with status:', result.status);
+    const result = setShowInnerThoughts(show);
+    console.log('[SERVER] Inner thoughts set to:', result.showInnerThoughts);
     res.json(result);
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[SERVER] Error querying Claude session:', err);
-    res.status(500).json({ error: 'Failed to query Claude session', status: 'error' });
+    console.error('[SERVER] Error setting inner thoughts:', err);
+    res.status(500).json({ error: 'Failed to set inner thoughts' });
   }
 });
 
@@ -279,17 +389,19 @@ app.get('/codex/events', (req, res) => {
   // Send initial connection success
   res.write('data: {"type":"connected"}\n\n');
 
-  // Subscribe to Codex events
+  // Subscribe to Codex events (with inner thoughts filtering)
   const unsubscribeCodex = subscribeCodexEvents((event) => {
     try {
-      res.write(`data: ${JSON.stringify(event)}\n\n`);
+      if (shouldSendEvent(event.type, getShowInnerThoughts())) {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      }
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[SERVER] Error writing SSE Codex event:', err);
     }
   });
 
-  // Subscribe to transcript events
+  // Subscribe to transcript events (always sent, they're essential)
   const unsubscribeTranscript = subscribeTranscriptEvents((event) => {
     try {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -299,10 +411,12 @@ app.get('/codex/events', (req, res) => {
     }
   });
 
-  // Subscribe to Claude events
+  // Subscribe to Claude events (with inner thoughts filtering)
   const unsubscribeClaude = subscribeClaudeEvents((event) => {
     try {
-      res.write(`data: ${JSON.stringify({ ...event, source: 'claude' })}\n\n`);
+      if (shouldSendEvent(event.type, getShowInnerThoughts())) {
+        res.write(`data: ${JSON.stringify({ ...event, source: 'claude' })}\n\n`);
+      }
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[SERVER] Error writing SSE Claude event:', err);

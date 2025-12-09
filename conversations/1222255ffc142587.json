@@ -1,0 +1,33 @@
+{
+  "id": "1222255ffc142587",
+  "title": "Hello",
+  "createdAt": 1765322061260,
+  "updatedAt": 1765322158906,
+  "transcript": [
+    {
+      "role": "assistant",
+      "text": "Hey there! How can I help you today?",
+      "timestamp": 1765322070740
+    },
+    {
+      "role": "user",
+      "text": "Hello",
+      "timestamp": 1765322071093
+    },
+    {
+      "role": "user",
+      "text": "Let's do a quick test with cloud code, ask it what is this code base about.",
+      "timestamp": 1765322084286
+    },
+    {
+      "role": "assistant",
+      "text": "Here's what I found: the codebase is a voice-controlled coding assistant. It lets users write code, manage files, and run terminal commands all through natural speech. It uses a WebRTC bridge to connect multiple browser clients to a shared AI session, powered by Codex and Claude. The backend handles the AI interactions, and the whole system is built with TypeScript, Express, WebRTC, and OpenAI APIs.",
+      "timestamp": 1765322104919
+    },
+    {
+      "role": "user",
+      "text": "Okay, please ask it to do an exploration of the code base.",
+      "timestamp": 1765322158905
+    }
+  ]
+}

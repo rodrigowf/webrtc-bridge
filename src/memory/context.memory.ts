@@ -71,3 +71,20 @@ export async function recordMemoryRun(note: string) {
     // No memory file in user directory - skip recording
   }
 }
+
+/**
+ * Replace the entire CONTEXT_MEMORY.md file with new content.
+ * The assistant has full control over the memory file structure.
+ */
+export async function saveMemory(content: string): Promise<{ success: boolean; error?: string }> {
+  const memoryPath = getMemoryPath();
+
+  try {
+    await fs.writeFile(memoryPath, content.trim() + '\n', 'utf8');
+    console.log('[MEMORY] Replaced memory file, length:', content.length);
+    return { success: true };
+  } catch (err: any) {
+    console.error('[MEMORY] Failed to save memory:', err);
+    return { success: false, error: err?.message || 'Failed to save memory' };
+  }
+}

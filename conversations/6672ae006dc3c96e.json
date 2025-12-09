@@ -1,0 +1,48 @@
+{
+  "id": "6672ae006dc3c96e",
+  "title": "Hello",
+  "createdAt": 1765314094300,
+  "updatedAt": 1765314134561,
+  "transcript": [
+    {
+      "role": "user",
+      "text": "Hello.",
+      "timestamp": 1765314104680
+    },
+    {
+      "role": "assistant",
+      "text": "Hello! How can I help you today?",
+      "timestamp": 1765314105609
+    },
+    {
+      "role": "user",
+      "text": "Can you remember to?",
+      "timestamp": 1765314111392
+    },
+    {
+      "role": "user",
+      "text": "Yeah, that's...",
+      "timestamp": 1765314112062
+    },
+    {
+      "role": "user",
+      "text": "Discussation.",
+      "timestamp": 1765314113430
+    },
+    {
+      "role": "assistant",
+      "text": "Sure, I can remember things for you. What would you like me to remember from our conversation?",
+      "timestamp": 1765314114844
+    },
+    {
+      "role": "user",
+      "text": "Just I'm saying I was testing before I want to know if you have the history of our past session.",
+      "timestamp": 1765314130468
+    },
+    {
+      "role": "assistant",
+      "text": "I do have some memory of our past sessions. For example, I have details about your projects, some coding environment information, and general preferences. But I don't have a full transcript of everything we've talked about. If you want me to remember something specific going forward, just let me know and I can save that permanently.",
+      "timestamp": 1765314134540
+    }
+  ]
+}

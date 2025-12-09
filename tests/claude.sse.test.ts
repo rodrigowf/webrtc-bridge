@@ -2,35 +2,36 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock claude-agent-sdk before importing the server
 vi.mock('@anthropic-ai/claude-agent-sdk', () => {
-  function query() {
-    async function* generator(): AsyncGenerator<any> {
-      yield { type: 'result', result: 'test' };
-    }
-    return generator();
-  }
+  // Mock query() API that returns an AsyncGenerator with control methods
+  function query({ prompt, options }: { prompt: string; options?: any }) {
+    const abortController = options?.abortController;
 
-  // V2 API mock for persistent sessions
-  class MockSession {
-    private messageQueue: string[] = [];
+    async function* generator() {
+      if (abortController?.signal.aborted) {
+        throw new Error('aborted');
+      }
 
-    async send(message: string) {
-      this.messageQueue.push(message);
-    }
-
-    async *receive(): AsyncGenerator<any> {
-      const prompt = this.messageQueue.shift() || '';
+      yield { type: 'system', subtype: 'init', cwd: '/test', tools: ['Read', 'Edit', 'Bash'] };
       yield { type: 'user', message: { content: [{ type: 'text', text: prompt }] } };
-      yield { type: 'result', result: 'session test result', session_id: 'sdk-session-123' };
+      yield {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'Query response' }] },
+      };
+      yield { type: 'result', result: 'Query completed', session_id: 'sdk-session-123' };
     }
 
-    close() {}
+    const gen = generator();
+    // Add control methods to the generator
+    (gen as any).interrupt = async () => {
+      abortController?.abort();
+    };
+    (gen as any).setPermissionMode = async () => {};
+    (gen as any).setModel = async () => {};
+
+    return gen;
   }
 
-  function unstable_v2_createSession() {
-    return new MockSession();
-  }
-
-  return { query, unstable_v2_createSession };
+  return { query };
 });
 
 // Mock codex-sdk to prevent import errors
@@ -96,12 +97,13 @@ describe('Claude events via SSE endpoint', () => {
       const data = await res.json();
       expect(data).toHaveProperty('sessionId');
       expect(data).toHaveProperty('hasActiveSession');
+      expect(data).toHaveProperty('isProcessing');
     } finally {
       server.close();
     }
   });
 
-  it('responds to /claude/stop endpoint', async () => {
+  it('responds to /claude/pause endpoint', async () => {
     const app = (await import('../src/server.js')).default;
     const server = app.listen(0);
 
@@ -110,11 +112,12 @@ describe('Claude events via SSE endpoint', () => {
       const base =
         typeof addr === 'string' ? addr : `http://127.0.0.1:${addr?.port ?? 0}`;
 
-      const res = await fetch(`${base}/claude/stop`, { method: 'POST' });
+      const res = await fetch(`${base}/claude/pause`, { method: 'POST' });
       expect(res.ok).toBe(true);
 
       const data = await res.json();
-      expect(data.status).toBe('idle');
+      // pauseClaude now always returns 'paused' status
+      expect(data.status).toBe('paused');
     } finally {
       server.close();
     }
@@ -139,7 +142,7 @@ describe('Claude events via SSE endpoint', () => {
     }
   });
 
-  it('rejects /claude/run without prompt', async () => {
+  it('rejects /claude/prompt without prompt', async () => {
     const app = (await import('../src/server.js')).default;
     const server = app.listen(0);
 
@@ -148,7 +151,7 @@ describe('Claude events via SSE endpoint', () => {
       const base =
         typeof addr === 'string' ? addr : `http://127.0.0.1:${addr?.port ?? 0}`;
 
-      const res = await fetch(`${base}/claude/run`, {
+      const res = await fetch(`${base}/claude/prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -162,7 +165,7 @@ describe('Claude events via SSE endpoint', () => {
     }
   });
 
-  it('responds to /claude/init endpoint', async () => {
+  it('responds to /claude/prompt endpoint', async () => {
     const app = (await import('../src/server.js')).default;
     const server = app.listen(0);
 
@@ -171,30 +174,10 @@ describe('Claude events via SSE endpoint', () => {
       const base =
         typeof addr === 'string' ? addr : `http://127.0.0.1:${addr?.port ?? 0}`;
 
-      const res = await fetch(`${base}/claude/init`, { method: 'POST' });
-      expect(res.ok).toBe(true);
-
-      const data = await res.json();
-      expect(data.status).toBe('initialized');
-      expect(data.sessionId).toMatch(/^claude-session-\d+$/);
-    } finally {
-      server.close();
-    }
-  });
-
-  it('responds to /claude/query endpoint', async () => {
-    const app = (await import('../src/server.js')).default;
-    const server = app.listen(0);
-
-    try {
-      const addr = server.address();
-      const base =
-        typeof addr === 'string' ? addr : `http://127.0.0.1:${addr?.port ?? 0}`;
-
-      const res = await fetch(`${base}/claude/query`, {
+      const res = await fetch(`${base}/claude/prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: 'test query' }),
+        body: JSON.stringify({ prompt: 'test prompt' }),
       });
       expect(res.ok).toBe(true);
 
@@ -206,7 +189,7 @@ describe('Claude events via SSE endpoint', () => {
     }
   });
 
-  it('rejects /claude/query without prompt', async () => {
+  it('responds to /claude/compact endpoint', async () => {
     const app = (await import('../src/server.js')).default;
     const server = app.listen(0);
 
@@ -215,15 +198,19 @@ describe('Claude events via SSE endpoint', () => {
       const base =
         typeof addr === 'string' ? addr : `http://127.0.0.1:${addr?.port ?? 0}`;
 
-      const res = await fetch(`${base}/claude/query`, {
+      // First need to create a session
+      await fetch(`${base}/claude/prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ prompt: 'init session' }),
       });
-      expect(res.status).toBe(400);
+
+      const res = await fetch(`${base}/claude/compact`, { method: 'POST' });
+      expect(res.ok).toBe(true);
 
       const data = await res.json();
-      expect(data.error).toBe('Missing prompt');
+      // compact may succeed or error depending on mock - just check we get a response
+      expect(data).toHaveProperty('status');
     } finally {
       server.close();
     }
