@@ -1,0 +1,33 @@
+{
+  "id": "feb8cdb75ee5d4c5",
+  "title": "Hello",
+  "createdAt": 1765322792235,
+  "updatedAt": 1765322840136,
+  "transcript": [
+    {
+      "role": "user",
+      "text": "Hello",
+      "timestamp": 1765322800587
+    },
+    {
+      "role": "assistant",
+      "text": "Hi there! How can I help you today?",
+      "timestamp": 1765322801078
+    },
+    {
+      "role": "user",
+      "text": "Do you remember our past conversation?",
+      "timestamp": 1765322807665
+    },
+    {
+      "role": "assistant",
+      "text": "I have some persistent memory from past sessions, like project details, preferences, and important notes, but I don’t have direct memory of the full conversations we’ve had. If there’s something specific you want me to recall or remember going forward, feel free to let me know and I can save it.",
+      "timestamp": 1765322810257
+    },
+    {
+      "role": "user",
+      "text": "Okay, thank you. Now let's just do a quick test here. I want you to ask Cloud Code to explore the current code base.",
+      "timestamp": 1765322840135
+    }
+  ]
+}

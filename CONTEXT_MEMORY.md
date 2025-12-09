@@ -34,3 +34,6 @@ Persistent notes the assistant should read on startup so context survives across
 - 2025-12-09T21:01:34.286Z UTC - Started OpenAI Realtime session (voice bridge)
 - 2025-12-09T23:04:55.444Z UTC - Started OpenAI Realtime session (voice bridge)
 - 2025-12-09T23:14:21.251Z UTC - Started OpenAI Realtime session (voice bridge)
+- 2025-12-09T23:26:32.230Z UTC - Started OpenAI Realtime session (voice bridge)
+- 2025-12-09T23:30:32.685Z UTC - Started OpenAI Realtime session (voice bridge)
+- 2025-12-09T23:35:22.080Z UTC - Started OpenAI Realtime session (voice bridge)

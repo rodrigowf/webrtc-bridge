@@ -1,0 +1,88 @@
+{
+  "id": "2eaba6564d0c1919",
+  "title": "Hello",
+  "createdAt": 1765323322081,
+  "updatedAt": 1765323428916,
+  "transcript": [
+    {
+      "role": "assistant",
+      "text": "Hi there! How can I help you today?",
+      "timestamp": 1765323345803
+    },
+    {
+      "role": "user",
+      "text": "Hello",
+      "timestamp": 1765323346705
+    },
+    {
+      "role": "user",
+      "text": "I want you to please take a look, like ask Claude Code to analyze the current code base.",
+      "timestamp": 1765323357186
+    },
+    {
+      "role": "assistant",
+      "text": "It looks like we ran into a small issue trying to get Claude to analyze the codebase. Let's try again. Here we go.",
+      "timestamp": 1765323361816
+    },
+    {
+      "role": "assistant",
+      "text": "I'm encountering",
+      "timestamp": 1765323371276
+    },
+    {
+      "role": "user",
+      "text": "No, wait, wait, yeah, you don't need to try again.",
+      "timestamp": 1765323374979
+    },
+    {
+      "role": "assistant",
+      "text": "Got it, no worries. I’ll hold off on retrying. Let me know if there's something specific",
+      "timestamp": 1765323375771
+    },
+    {
+      "role": "user",
+      "text": "process.",
+      "timestamp": 1765323376933
+    },
+    {
+      "role": "user",
+      "text": "Yeah.",
+      "timestamp": 1765323377420
+    },
+    {
+      "role": "assistant",
+      "text": "No problem at all. If you need anything else or want to take a different approach to exploring the code, just let me know.",
+      "timestamp": 1765323378377
+    },
+    {
+      "role": "user",
+      "text": "No, actually, I just want you to keep trying a couple more times.",
+      "timestamp": 1765323393746
+    },
+    {
+      "role": "assistant",
+      "text": "It seems that Claude is consistently running into errors while attempting to analyze the codebase. We might need a different approach. Would you like to try a more focused question or maybe switch to Codex for a",
+      "timestamp": 1765323403320
+    },
+    {
+      "role": "user",
+      "text": "Oh, just one more, just one more.",
+      "timestamp": 1765323405881
+    },
+    {
+      "role": "assistant",
+      "text": "It looks like Claude is consistently running into an error while trying to analyze the codebase. We might need a different approach. We can switch to Codex for a more targeted look at specific files or areas. Or we could troubleshoot why Claude is failing. Let me know how you'd like to proceed.",
+      "timestamp": 1765323422594
+    },
+    {
+      "role": "user",
+      "text": "Yeah, I know that I just wanted to check the interface. Thank you.",
+      "timestamp": 1765323427287
+    },
+    {
+      "role": "assistant",
+      "text": "You're welcome! I'm glad we could check that together. If you need any further help or have more tasks, just let me know.",
+      "timestamp": 1765323428916
+    }
+  ]
+}

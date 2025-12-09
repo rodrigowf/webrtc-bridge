@@ -1,0 +1,38 @@
+{
+  "id": "9987c47aab49314c",
+  "title": "Hello",
+  "createdAt": 1765323032687,
+  "updatedAt": 1765323094718,
+  "transcript": [
+    {
+      "role": "user",
+      "text": "Hello",
+      "timestamp": 1765323038117
+    },
+    {
+      "role": "assistant",
+      "text": "Hey there! How can I assist you today?",
+      "timestamp": 1765323038678
+    },
+    {
+      "role": "user",
+      "text": "Please ask Cloud Code to explore the critical base.",
+      "timestamp": 1765323048032
+    },
+    {
+      "role": "user",
+      "text": "Hello?",
+      "timestamp": 1765323076029
+    },
+    {
+      "role": "assistant",
+      "text": "Hi! I'm having Claude take a look at the codebase for a high-level overview. It might take a moment. I'll share what it finds as soon as it's ready.",
+      "timestamp": 1765323076959
+    },
+    {
+      "role": "user",
+      "text": "I don't see any activity on the plot side. Please try again.",
+      "timestamp": 1765323094718
+    }
+  ]
+}

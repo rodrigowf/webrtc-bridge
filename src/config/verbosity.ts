@@ -60,8 +60,8 @@ export function subscribeInnerThoughtsChanges(listener: InnerThoughtsListener): 
 }
 
 /**
- * Event types that should always be sent regardless of inner thoughts setting.
- * These are essential status updates.
+ * Event types that should always be sent to the frontend regardless of inner thoughts setting.
+ * Inner thoughts setting only controls what the voice assistant hears, not UI display.
  */
 const ESSENTIAL_EVENT_TYPES = new Set([
   // Session lifecycle
@@ -82,21 +82,23 @@ const ESSENTIAL_EVENT_TYPES = new Set([
 
   // Connection status
   'connected',
-]);
 
-/**
- * Event types that are inner thoughts (detailed progress info).
- * Only sent when inner thoughts are shown.
- */
-const INNER_THOUGHT_EVENT_TYPES = new Set([
-  // Detailed execution progress
+  // Agent activity - always show in UI (inner thoughts only affects voice)
   'turn_started',
   'turn_paused',
   'thread_event',
   'message',
-
-  // Compaction progress
   'compact_started',
+]);
+
+/**
+ * Event types that are inner thoughts (detailed progress info).
+ * These control what the VOICE ASSISTANT hears, not what's displayed in the UI.
+ * All events are sent to the frontend; this set is reserved for future voice filtering.
+ */
+const INNER_THOUGHT_EVENT_TYPES = new Set<string>([
+  // Currently empty - all events go to frontend
+  // Inner thoughts filtering will be applied at the voice assistant level
 ]);
 
 /**
