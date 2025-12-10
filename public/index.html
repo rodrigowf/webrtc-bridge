@@ -146,6 +146,32 @@
       .audio-btn.muted .icon-thoughts-off {
         display: block;
       }
+      /* Services button - inverted logic: green when stopped (ready to start), red when running (ready to stop) */
+      #servicesToggle .icon-power-off {
+        display: block;
+        color: var(--danger);
+      }
+      #servicesToggle .icon-power-on {
+        display: none;
+        color: var(--accent);
+      }
+      #servicesToggle.muted .icon-power-off {
+        display: none;
+      }
+      #servicesToggle.muted .icon-power-on {
+        display: block;
+        color: var(--accent);
+      }
+      /* Services button: red background when running (ready to stop) */
+      #servicesToggle:not(.muted) {
+        background: rgba(255, 107, 107, 0.15);
+        border-color: rgba(255, 107, 107, 0.3);
+      }
+      #servicesToggle:not(.muted):hover:not(:disabled) {
+        background: rgba(255, 107, 107, 0.25);
+        border-color: rgba(255, 107, 107, 0.5);
+        box-shadow: 0 0 20px rgba(255, 107, 107, 0.15);
+      }
       /* AI button uses blue accent */
       #muteAI:not(.muted) {
         background: linear-gradient(135deg, rgba(94, 163, 255, 0.15), rgba(108, 240, 194, 0.1));
@@ -857,6 +883,17 @@
             <h1>VCode</h1>
           </div>
           <div class="controls">
+            <button id="servicesToggle" class="audio-btn muted" title="Start/Stop all services (OpenAI, Claude, Codex)">
+              <svg class="icon icon-power-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"/>
+                <line x1="12" y1="2" x2="12" y2="12"/>
+              </svg>
+              <svg class="icon icon-power-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="8 12 12 16 16 12"/>
+                <line x1="12" y1="8" x2="12" y2="16"/>
+              </svg>
+            </button>
             <button id="innerThoughtsToggle" class="audio-btn muted" title="Toggle agent inner thoughts visibility">
               <svg class="icon icon-thoughts-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 5a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V19a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-1.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"/>

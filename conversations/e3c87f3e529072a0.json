@@ -1,0 +1,103 @@
+{
+  "id": "e3c87f3e529072a0",
+  "title": "Hello",
+  "createdAt": 1765394954295,
+  "updatedAt": 1765395667370,
+  "transcript": [
+    {
+      "role": "assistant",
+      "text": "Hey there! How can I help you today?",
+      "timestamp": 1765394997137
+    },
+    {
+      "role": "user",
+      "text": "Hello",
+      "timestamp": 1765394998656
+    },
+    {
+      "role": "user",
+      "text": "A quick question. Can you remember the history of the conversation we had so far?",
+      "timestamp": 1765395010371
+    },
+    {
+      "role": "assistant",
+      "text": "I don’t have a detailed history of this current conversation beyond what we’ve just talked about right now. But I do have access to the persistent memory we’ve saved before, like project details, preferences, and important notes. If you want me to recall or save anything specific from our current discussion, just let me know.",
+      "timestamp": 1765395013557
+    },
+    {
+      "role": "user",
+      "text": "Okay, thank you.",
+      "timestamp": 1765395041302
+    },
+    {
+      "role": "assistant",
+      "text": "You're welcome! If anything comes up, or if you need any help, just let me know.",
+      "timestamp": 1765395042021
+    },
+    {
+      "role": "user",
+      "text": "They remember what we talked about so...",
+      "timestamp": 1765395596198
+    },
+    {
+      "role": "user",
+      "text": "Thank you.",
+      "timestamp": 1765395597874
+    },
+    {
+      "role": "assistant",
+      "text": "Sure! So far, we talked about whether I can remember the conversation history. I explained that I don’t store the full detailed history of this current chat, but I do keep persistent memory for key project details and notes. If you want me to remember anything specific or retrieve project info, I can do that.",
+      "timestamp": 1765395600350
+    },
+    {
+      "role": "user",
+      "text": "𝘾𝘰𝘳𝘢𝘵𝘭 𝘪𝘵𝘩 𝘪𝘵𝘩 𝘩𝘦𝘢𝘯 𝘪𝘵𝘩.",
+      "timestamp": 1765395647842
+    },
+    {
+      "role": "user",
+      "text": "I'm going to stop now.",
+      "timestamp": 1765395648222
+    },
+    {
+      "role": "user",
+      "text": "love",
+      "timestamp": 1765395648805
+    },
+    {
+      "role": "assistant",
+      "text": "Parece que você está testando o áudio, certo? Estou te ouvindo. Se precisar de ajuda com algo ou tiver alguma pergunta de programação, é só falar.",
+      "timestamp": 1765395649798
+    },
+    {
+      "role": "user",
+      "text": "Oh",
+      "timestamp": 1765395663374
+    },
+    {
+      "role": "assistant",
+      "text": "Tudo bem,",
+      "timestamp": 1765395663628
+    },
+    {
+      "role": "user",
+      "text": "Oh",
+      "timestamp": 1765395664276
+    },
+    {
+      "role": "user",
+      "text": "Oh",
+      "timestamp": 1765395664888
+    },
+    {
+      "role": "user",
+      "text": "we were talking about.",
+      "timestamp": 1765395665703
+    },
+    {
+      "role": "assistant",
+      "text": "Tudo bem, estou aqui. Pode me contar o que você precisa ou o que gostaria de fazer agora. Estou pronto para ajudar no seu projeto de código.",
+      "timestamp": 1765395667369
+    }
+  ]
+}

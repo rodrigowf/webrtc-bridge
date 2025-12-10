@@ -12,6 +12,7 @@ if ('serviceWorker' in navigator) {
 }
 
 const ui = {
+  servicesToggle: document.getElementById('servicesToggle'),
   muteButton: document.getElementById('mute'),
   muteAIButton: document.getElementById('muteAI'),
   statusEl: document.getElementById('status'),
@@ -38,6 +39,11 @@ const ui = {
   innerThoughtsToggle: document.getElementById('innerThoughtsToggle'),
 };
 
+const claudeAuthState = {
+  isAuthenticated: false,
+  isChecking: false,
+};
+
 const state = {
   pc: null,
   localStream: null,
@@ -46,6 +52,7 @@ const state = {
   isAIMuted: true, // Start with AI muted
   isActive: false,
   showInnerThoughts: false, // Start with inner thoughts hidden
+  servicesRunning: false, // Track if services are started
 };
 
 const audioState = {
@@ -56,6 +63,15 @@ const audioState = {
 };
 
 console.log('[FRONTEND] Script loaded and initialized');
+
+// Helper function to auto-scroll only if user is near the bottom
+function autoScrollIfAtBottom(element, threshold = 100) {
+  if (!element) return;
+  const isNearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < threshold;
+  if (isNearBottom) {
+    element.scrollTop = element.scrollHeight;
+  }
+}
 
 function setStatus(main, sub, tone = 'idle') {
   ui.statusEl.textContent = main;
@@ -70,7 +86,7 @@ function appendTranscript(text, role = 'assistant') {
   line.className = 'line';
   line.textContent = (role === 'user' ? 'You: ' : 'Assistant: ') + text;
   ui.transcriptEl.appendChild(line);
-  ui.transcriptEl.scrollTop = ui.transcriptEl.scrollHeight;
+  autoScrollIfAtBottom(ui.transcriptEl);
 }
 
 async function ensureAudioContext() {
@@ -306,9 +322,100 @@ window.addEventListener('beforeunload', () => {
   }
 });
 
-// Auto-connect on page load
-console.log('[FRONTEND] Auto-connecting on page load...');
-void startCall();
+// Services toggle functionality
+async function toggleServices() {
+  if (state.servicesRunning && state.isActive) {
+    // Stop services (only if we're actively connected)
+    console.log('[FRONTEND] Stopping all services...');
+    ui.servicesToggle.disabled = true;
+    setStatus('Stopping services...', 'Please wait', 'idle');
+
+    try {
+      const res = await fetch('/services/stop', { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to stop services');
+
+      // Cleanup local connection
+      cleanup();
+
+      state.servicesRunning = false;
+      ui.servicesToggle.classList.add('muted');
+      ui.servicesToggle.disabled = false;
+      ui.servicesToggle.title = 'Start all services (OpenAI, Claude, Codex)';
+      setStatus('Services stopped', 'Click the power button to start', 'idle');
+      setCodexStatus('idle', 'Offline');
+      setClaudeStatus('idle', 'Offline');
+      console.log('[FRONTEND] Services stopped successfully');
+    } catch (err) {
+      console.error('[FRONTEND] Error stopping services:', err);
+      setStatus('Error stopping services', err.message, 'error');
+      ui.servicesToggle.disabled = false;
+    }
+  } else if (state.servicesRunning && !state.isActive) {
+    // Services are running but we're not connected - join the session
+    console.log('[FRONTEND] Joining existing session...');
+    void startCall();
+  } else {
+    // Start services
+    console.log('[FRONTEND] Starting all services...');
+    ui.servicesToggle.disabled = true;
+    setStatus('Starting services...', 'Connecting to OpenAI, Claude, and Codex', 'idle');
+
+    try {
+      const res = await fetch('/services/start', { method: 'POST' });
+      if (!res.ok) throw new Error('Failed to start services');
+
+      state.servicesRunning = true;
+      ui.servicesToggle.classList.remove('muted');
+      ui.servicesToggle.disabled = false;
+      ui.servicesToggle.title = 'Stop all services';
+      setStatus('Services ready', 'Connecting to call...', 'live');
+      setCodexStatus('connected', 'Ready');
+      setClaudeStatus('connected', 'Ready');
+      console.log('[FRONTEND] Services started successfully');
+
+      // Now auto-connect to WebRTC
+      void startCall();
+    } catch (err) {
+      console.error('[FRONTEND] Error starting services:', err);
+      setStatus('Error starting services', err.message, 'error');
+      ui.servicesToggle.disabled = false;
+    }
+  }
+}
+
+ui.servicesToggle.addEventListener('click', () => {
+  console.log('[FRONTEND] Services toggle clicked');
+  toggleServices();
+});
+
+// Check if services are already running on page load
+async function checkServicesStatus() {
+  try {
+    const res = await fetch('/session/status');
+    if (!res.ok) throw new Error('Failed to check session status');
+    const data = await res.json();
+
+    if (data.openaiConnected) {
+      console.log('[FRONTEND] Services already running, showing join option');
+      state.servicesRunning = true;
+      ui.servicesToggle.classList.remove('muted');
+      ui.servicesToggle.title = 'Join existing session or stop all services';
+      setStatus('Services running', `${data.frontendCount} frontend(s) connected - Click power button to join`, 'live');
+      setCodexStatus('connected', 'Ready');
+      setClaudeStatus('connected', 'Ready');
+    } else {
+      console.log('[FRONTEND] Services not running, waiting for user to start');
+      ui.servicesToggle.title = 'Start all services (OpenAI, Claude, Codex)';
+      setStatus('Ready', 'Click the power button to start', 'idle');
+    }
+  } catch (err) {
+    console.error('[FRONTEND] Error checking services status:', err);
+    setStatus('Ready', 'Click the power button to start', 'idle');
+  }
+}
+
+// Check services status on load
+checkServicesStatus();
 
 console.log('[FRONTEND] Event listeners attached');
 
@@ -773,7 +880,7 @@ function renderClaudeToolUse(toolName, input) {
 
   if (section) {
     ui.claudeOutput.appendChild(section);
-    ui.claudeOutput.scrollTop = ui.claudeOutput.scrollHeight;
+    autoScrollIfAtBottom(ui.claudeOutput);
   }
 }
 
@@ -785,7 +892,7 @@ function updateClaudeStreamingMessage(text) {
     ui.claudeOutput.appendChild(currentClaudeStreamingEl);
   }
   currentClaudeStreamingEl.textContent = '💭 ' + text;
-  ui.claudeOutput.scrollTop = ui.claudeOutput.scrollHeight;
+  autoScrollIfAtBottom(ui.claudeOutput);
 }
 
 function finalizeClaudeStreamingMessage(text) {
@@ -839,7 +946,7 @@ function appendClaudeLine(text, type = 'info', fullText = null) {
   }
 
   ui.claudeOutput.appendChild(line);
-  ui.claudeOutput.scrollTop = ui.claudeOutput.scrollHeight;
+  autoScrollIfAtBottom(ui.claudeOutput);
 }
 
 function clearClaudeOutput() {
@@ -866,7 +973,7 @@ function handleTranscriptEvent(data) {
       currentTranscriptRole = role;
     }
     currentTranscriptEl.textContent += text;
-    ui.transcriptEl.scrollTop = ui.transcriptEl.scrollHeight;
+    autoScrollIfAtBottom(ui.transcriptEl);
   } else if (type === 'transcript_done') {
     // Final assistant transcript
     if (currentTranscriptEl && currentTranscriptRole === 'assistant') {
@@ -1004,7 +1111,7 @@ function renderCodexBashSection(command, output, isRunning = false, exitCode = n
   }
 
   ui.codexOutput.appendChild(section);
-  ui.codexOutput.scrollTop = ui.codexOutput.scrollHeight;
+  autoScrollIfAtBottom(ui.codexOutput);
 }
 
 let currentStreamingEl = null;
@@ -1017,7 +1124,7 @@ function updateStreamingMessage(text) {
     ui.codexOutput.appendChild(currentStreamingEl);
   }
   currentStreamingEl.textContent = '💭 ' + text;
-  ui.codexOutput.scrollTop = ui.codexOutput.scrollHeight;
+  autoScrollIfAtBottom(ui.codexOutput);
 }
 
 function updateStreamingFunction(item) {
@@ -1041,7 +1148,7 @@ function updateStreamingFunction(item) {
     }
   }
   currentStreamingEl.textContent = display;
-  ui.codexOutput.scrollTop = ui.codexOutput.scrollHeight;
+  autoScrollIfAtBottom(ui.codexOutput);
 }
 
 function finalizeStreamingMessage(text) {
@@ -1110,7 +1217,7 @@ function appendCodexLine(text, type = 'info', fullText = null) {
   }
 
   ui.codexOutput.appendChild(line);
-  ui.codexOutput.scrollTop = ui.codexOutput.scrollHeight;
+  autoScrollIfAtBottom(ui.codexOutput);
 }
 
 function clearCodexOutput() {
@@ -1385,3 +1492,230 @@ loadConversations();
 loadInnerThoughtsState();
 
 console.log('[FRONTEND] Conversation management initialized');
+
+// --- Claude Authentication ---
+async function checkClaudeAuthentication() {
+  if (claudeAuthState.isChecking) return;
+  claudeAuthState.isChecking = true;
+
+  console.log('[FRONTEND] Checking Claude authentication...');
+  try {
+    const res = await fetch('/claude/auth/status');
+    if (!res.ok) throw new Error('Failed to check auth status');
+    const authStatus = await res.json();
+
+    claudeAuthState.isAuthenticated = authStatus.isAuthenticated;
+    claudeAuthState.isChecking = false;
+
+    if (!authStatus.isAuthenticated && authStatus.needsLogin) {
+      console.log('[FRONTEND] Claude not authenticated, showing login form');
+      showClaudeLoginForm(authStatus.loginUrl, authStatus.error);
+    } else {
+      console.log('[FRONTEND] Claude authenticated');
+      hideClaudeLoginForm();
+    }
+  } catch (err) {
+    console.error('[FRONTEND] Error checking Claude auth:', err);
+    claudeAuthState.isChecking = false;
+    claudeAuthState.isAuthenticated = false;
+    showClaudeLoginForm(null, 'Failed to check authentication status');
+  }
+}
+
+function showClaudeLoginForm(loginUrl, errorMessage) {
+  if (!ui.claudeOutput) return;
+
+  const formHtml = `
+    <div class="claude-login-form" style="
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 40px 20px;
+      height: 100%;
+      text-align: center;
+    ">
+      <div style="
+        font-size: 48px;
+        margin-bottom: 10px;
+      ">🔐</div>
+      <h3 style="
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text);
+      ">Claude Code Authentication Required</h3>
+      <p style="
+        margin: 0;
+        font-size: 14px;
+        color: var(--muted);
+        max-width: 400px;
+        line-height: 1.5;
+      ">To use Claude Code, you need to authenticate with an API key or log in with your Claude.ai subscription.</p>
+      ${errorMessage ? `<p style="
+        margin: 0;
+        font-size: 13px;
+        color: var(--danger);
+        padding: 8px 12px;
+        background: rgba(255, 107, 107, 0.1);
+        border-radius: 8px;
+        border: 1px solid rgba(255, 107, 107, 0.3);
+      ">${escapeHtml(errorMessage)}</p>` : ''}
+      <div style="
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        width: 100%;
+        max-width: 400px;
+      ">
+        <div style="
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding: 16px;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid var(--card-border);
+          border-radius: 12px;
+        ">
+          <label style="
+            font-size: 12px;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            text-align: left;
+          ">API Key</label>
+          <input
+            type="password"
+            id="claudeApiKeyInput"
+            placeholder="sk-ant-..."
+            style="
+              background: var(--card);
+              border: 1px solid var(--card-border);
+              border-radius: 8px;
+              color: var(--text);
+              padding: 10px 12px;
+              font-size: 14px;
+              font-family: 'JetBrains Mono', monospace;
+              width: 100%;
+            "
+          />
+          <button
+            id="claudeLoginBtn"
+            style="
+              background: linear-gradient(120deg, var(--accent), var(--accent-2));
+              color: #0a0b10;
+              border: none;
+              border-radius: 10px;
+              padding: 12px 20px;
+              font-size: 14px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: transform 150ms ease, box-shadow 150ms ease;
+              width: 100%;
+            "
+            onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 20px rgba(108, 240, 194, 0.3)'"
+            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
+          >Submit API Key</button>
+        </div>
+        ${loginUrl ? `<div style="
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          color: var(--muted);
+          font-size: 13px;
+        ">
+          <div style="flex: 1; height: 1px; background: var(--card-border);"></div>
+          <span>OR</span>
+          <div style="flex: 1; height: 1px; background: var(--card-border);"></div>
+        </div>
+        <a
+          href="${loginUrl}"
+          target="_blank"
+          rel="noopener noreferrer"
+          style="
+            background: rgba(94, 163, 255, 0.15);
+            border: 1px solid rgba(94, 163, 255, 0.3);
+            border-radius: 10px;
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--accent-2);
+            text-decoration: none;
+            transition: all 150ms ease;
+            display: block;
+          "
+          onmouseover="this.style.background='rgba(94, 163, 255, 0.25)'; this.style.borderColor='rgba(94, 163, 255, 0.5)'"
+          onmouseout="this.style.background='rgba(94, 163, 255, 0.15)'; this.style.borderColor='rgba(94, 163, 255, 0.3)'"
+        >Log in with Claude.ai</a>` : ''}
+      </div>
+      <p style="
+        margin: 0;
+        font-size: 12px;
+        color: var(--muted);
+        max-width: 400px;
+      ">Get your API key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: none;">console.anthropic.com</a></p>
+    </div>
+  `;
+
+  ui.claudeOutput.innerHTML = formHtml;
+  setClaudeStatus('error', 'Not Authenticated');
+
+  // Add event listener for submit button
+  const loginBtn = document.getElementById('claudeLoginBtn');
+  const apiKeyInput = document.getElementById('claudeApiKeyInput');
+
+  if (loginBtn && apiKeyInput) {
+    loginBtn.addEventListener('click', async () => {
+      const apiKey = apiKeyInput.value.trim();
+      if (!apiKey) {
+        alert('Please enter an API key');
+        return;
+      }
+
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Authenticating...';
+
+      try {
+        const res = await fetch('/claude/auth/set-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Failed to set API key');
+        }
+
+        console.log('[FRONTEND] API key set successfully');
+        claudeAuthState.isAuthenticated = true;
+        hideClaudeLoginForm();
+        setClaudeStatus('connected', 'Ready');
+      } catch (err) {
+        console.error('[FRONTEND] Error setting API key:', err);
+        alert('Failed to set API key: ' + err.message);
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Submit API Key';
+      }
+    });
+
+    // Allow Enter key to submit
+    apiKeyInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') {
+        loginBtn.click();
+      }
+    });
+  }
+}
+
+function hideClaudeLoginForm() {
+  if (!ui.claudeOutput) return;
+  ui.claudeOutput.innerHTML = '<div class="codex-line empty" id="claudeEmpty">Waiting for Claude activity...</div>';
+  setClaudeStatus('connected', 'Ready');
+}
+
+// Check Claude authentication on page load
+checkClaudeAuthentication();
+
+console.log('[FRONTEND] Claude authentication check initialized');

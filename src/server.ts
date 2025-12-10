@@ -6,7 +6,7 @@ import { fileURLToPath } from 'url';
 
 import { env } from './config.env.js';
 import { getSSLCerts } from './ssl/generate-cert.js';
-import { handleBrowserOffer, handleBrowserDisconnect, getConnectionCount, getConnectionIds } from './webrtc/browser-bridge.js';
+import { handleBrowserOffer, handleBrowserDisconnect, getConnectionCount, getConnectionIds, disconnectAllBrowserConnections } from './webrtc/browser-bridge.js';
 import { realtimeSessionManager } from './openai/openai.realtime.js';
 import {
   promptCodex,
@@ -28,6 +28,10 @@ import {
   hasActiveSession,
   isProcessing as isClaudeProcessing,
 } from './claude/claude.service.js';
+import {
+  checkClaudeAuth,
+  setClaudeApiKey,
+} from './claude/claude.auth.js';
 import { subscribeTranscriptEvents } from './openai/openai.realtime.js';
 import { displayServerInfo } from './utils/network-info.js';
 import {
@@ -129,6 +133,51 @@ app.get('/session/status', (_req, res) => {
   } catch (err) {
     console.error('[SERVER] Error getting session status:', err);
     res.status(500).json({ error: 'Failed to get session status' });
+  }
+});
+
+// Start all services (OpenAI, Claude, Codex)
+app.post('/services/start', async (_req, res) => {
+  console.log('[SERVER] /services/start endpoint called');
+  try {
+    // Initialize OpenAI Realtime session
+    await realtimeSessionManager.getSession();
+    console.log('[SERVER] All services started successfully');
+    res.json({
+      status: 'ok',
+      message: 'All services started',
+      openaiConnected: true,
+    });
+  } catch (err) {
+    console.error('[SERVER] Error starting services:', err);
+    res.status(500).json({ error: 'Failed to start services' });
+  }
+});
+
+// Stop all services (OpenAI, Claude, Codex)
+app.post('/services/stop', (_req, res) => {
+  console.log('[SERVER] /services/stop endpoint called');
+  try {
+    // Disconnect all browser connections first
+    const { count } = disconnectAllBrowserConnections();
+    console.log(`[SERVER] Disconnected ${count} browser connection(s)`);
+
+    // Close OpenAI session
+    realtimeSessionManager.closeSession();
+    // Reset Codex
+    resetCodex();
+    // Reset Claude
+    resetClaude();
+    console.log('[SERVER] All services stopped successfully');
+    res.json({
+      status: 'ok',
+      message: 'All services stopped',
+      openaiConnected: false,
+      disconnectedConnections: count,
+    });
+  } catch (err) {
+    console.error('[SERVER] Error stopping services:', err);
+    res.status(500).json({ error: 'Failed to stop services' });
   }
 });
 
@@ -343,6 +392,45 @@ app.get('/claude/status', (_req, res) => {
   } catch (err) {
     console.error('[SERVER] Error getting Claude status:', err);
     res.status(500).json({ error: 'Failed to get Claude status' });
+  }
+});
+
+// Claude authentication endpoints
+app.get('/claude/auth/status', async (_req, res) => {
+  console.log('[SERVER] /claude/auth/status endpoint called');
+  try {
+    const authStatus = await checkClaudeAuth();
+    console.log('[SERVER] Claude auth status:', authStatus);
+    res.json(authStatus);
+  } catch (err) {
+    console.error('[SERVER] Error checking Claude auth:', err);
+    res.status(500).json({
+      isAuthenticated: false,
+      needsLogin: true,
+      error: 'Failed to check authentication status'
+    });
+  }
+});
+
+app.post('/claude/auth/set-key', (req, res) => {
+  console.log('[SERVER] /claude/auth/set-key endpoint called');
+  const { apiKey } = req.body ?? {};
+
+  if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
+    console.error('[SERVER] Invalid request: missing or invalid API key');
+    return res.status(400).json({ error: 'API key is required' });
+  }
+
+  try {
+    setClaudeApiKey(apiKey.trim());
+    console.log('[SERVER] Claude API key set successfully');
+    res.json({
+      success: true,
+      message: 'API key set successfully'
+    });
+  } catch (err) {
+    console.error('[SERVER] Error setting Claude API key:', err);
+    res.status(500).json({ error: 'Failed to set API key' });
   }
 });
 

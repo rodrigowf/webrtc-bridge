@@ -158,3 +158,19 @@ The browser UI auto-connects on load and provides:
 - **Transcript tab** - Real-time transcription of conversation
 - **Codex tab** - OpenAI Codex agent activity and output
 - **Claude tab** - Claude Code agent activity and output
+
+### Claude Authentication
+
+The Claude tab automatically detects if `ANTHROPIC_API_KEY` is set. If not authenticated:
+
+1. A login form appears in the Claude panel
+2. Users can enter their Anthropic API key directly in the UI
+3. The key is set in the server's environment for the current session
+4. After authentication, Claude Code becomes available for use
+
+**To get an API key:**
+- Visit [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
+- Create a new API key
+- Paste it into the Claude panel login form
+
+**Alternative:** Set `ANTHROPIC_API_KEY` in your `.env` file before starting the server to skip the login form.

@@ -65,6 +65,12 @@ export async function handleBrowserOffer(offerSdp: string): Promise<{ answerSdp:
   const connectionId = generateConnectionId();
   console.log(`[BROWSER-BRIDGE] New connection: ${connectionId}`);
 
+  // Check if OpenAI session is already running - only connect if services are started
+  if (!realtimeSessionManager.isConnected()) {
+    console.log(`[BROWSER-BRIDGE:${connectionId}] Services not started - waiting for user to start services`);
+    throw new Error('Services not started. Please start services first.');
+  }
+
   const browserPC = new RTCPeerConnectionClass();
 
   // Track connection state for auto-cleanup
@@ -150,4 +156,26 @@ export function handleBrowserDisconnect(connectionId: string): { status: string 
   console.log(`[BROWSER-BRIDGE] Disconnected ${connectionId} (remaining: ${connections.size})`);
 
   return { status: 'disconnected' };
+}
+
+/**
+ * Disconnect ALL browser connections (used when stopping services)
+ */
+export function disconnectAllBrowserConnections(): { count: number } {
+  const count = connections.size;
+  console.log(`[BROWSER-BRIDGE] Disconnecting all ${count} browser connection(s)`);
+
+  for (const [connectionId, connection] of connections.entries()) {
+    try {
+      connection.close();
+      console.log(`[BROWSER-BRIDGE] Closed connection ${connectionId}`);
+    } catch (err) {
+      console.error(`[BROWSER-BRIDGE] Error closing connection ${connectionId}:`, err);
+    }
+  }
+
+  connections.clear();
+  console.log(`[BROWSER-BRIDGE] All browser connections disconnected`);
+
+  return { count };
 }
