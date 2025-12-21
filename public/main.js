@@ -1494,6 +1494,8 @@ loadInnerThoughtsState();
 console.log('[FRONTEND] Conversation management initialized');
 
 // --- Claude Authentication ---
+let oauthEventSource = null;
+
 async function checkClaudeAuthentication() {
   if (claudeAuthState.isChecking) return;
   claudeAuthState.isChecking = true;
@@ -1509,20 +1511,20 @@ async function checkClaudeAuthentication() {
 
     if (!authStatus.isAuthenticated && authStatus.needsLogin) {
       console.log('[FRONTEND] Claude not authenticated, showing login form');
-      showClaudeLoginForm(authStatus.loginUrl, authStatus.error);
+      showClaudeLoginForm(authStatus.error);
     } else {
-      console.log('[FRONTEND] Claude authenticated');
+      console.log('[FRONTEND] Claude authenticated via', authStatus.method);
       hideClaudeLoginForm();
     }
   } catch (err) {
     console.error('[FRONTEND] Error checking Claude auth:', err);
     claudeAuthState.isChecking = false;
     claudeAuthState.isAuthenticated = false;
-    showClaudeLoginForm(null, 'Failed to check authentication status');
+    showClaudeLoginForm('Failed to check authentication status');
   }
 }
 
-function showClaudeLoginForm(loginUrl, errorMessage) {
+function showClaudeLoginForm(errorMessage) {
   if (!ui.claudeOutput) return;
 
   const formHtml = `
@@ -1552,16 +1554,9 @@ function showClaudeLoginForm(loginUrl, errorMessage) {
         color: var(--muted);
         max-width: 400px;
         line-height: 1.5;
-      ">To use Claude Code, you need to authenticate with an API key or log in with your Claude.ai subscription.</p>
-      ${errorMessage ? `<p style="
-        margin: 0;
-        font-size: 13px;
-        color: var(--danger);
-        padding: 8px 12px;
-        background: rgba(255, 107, 107, 0.1);
-        border-radius: 8px;
-        border: 1px solid rgba(255, 107, 107, 0.3);
-      ">${escapeHtml(errorMessage)}</p>` : ''}
+      ">Log in with your Claude.ai subscription (Pro/Max) or enter an API key.</p>
+      <div id="claudeAuthError" style="display: none;"></div>
+      <div id="claudeAuthStatus" style="display: none;"></div>
       <div style="
         display: flex;
         flex-direction: column;
@@ -1569,6 +1564,131 @@ function showClaudeLoginForm(loginUrl, errorMessage) {
         width: 100%;
         max-width: 400px;
       ">
+        <!-- OAuth Login Section -->
+        <div id="claudeOAuthSection" style="
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding: 16px;
+          background: rgba(94, 163, 255, 0.08);
+          border: 1px solid rgba(94, 163, 255, 0.2);
+          border-radius: 12px;
+        ">
+          <button
+            id="claudeOAuthBtn"
+            style="
+              background: linear-gradient(120deg, var(--accent), var(--accent-2));
+              color: #0a0b10;
+              border: none;
+              border-radius: 10px;
+              padding: 12px 20px;
+              font-size: 14px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: transform 150ms ease, box-shadow 150ms ease;
+              width: 100%;
+            "
+            onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 20px rgba(108, 240, 194, 0.3)'"
+            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
+          >Log in with Claude.ai</button>
+
+          <!-- Auth URL display (hidden initially) -->
+          <div id="claudeAuthUrlSection" style="display: none;">
+            <p style="
+              margin: 8px 0;
+              font-size: 13px;
+              color: var(--muted);
+              text-align: left;
+            ">Open this URL in your browser:</p>
+            <a
+              id="claudeAuthUrl"
+              href="#"
+              target="_blank"
+              rel="noopener noreferrer"
+              style="
+                display: block;
+                background: var(--card);
+                border: 1px solid var(--card-border);
+                border-radius: 8px;
+                padding: 10px 12px;
+                font-size: 12px;
+                font-family: 'JetBrains Mono', monospace;
+                color: var(--accent-2);
+                word-break: break-all;
+                text-decoration: none;
+                text-align: left;
+              "
+            ></a>
+            <p style="
+              margin: 12px 0 8px 0;
+              font-size: 13px;
+              color: var(--muted);
+              text-align: left;
+            ">Then paste the code here:</p>
+            <input
+              type="text"
+              id="claudeAuthCodeInput"
+              placeholder="Paste code here..."
+              style="
+                background: var(--card);
+                border: 1px solid var(--card-border);
+                border-radius: 8px;
+                color: var(--text);
+                padding: 10px 12px;
+                font-size: 14px;
+                font-family: 'JetBrains Mono', monospace;
+                width: 100%;
+              "
+            />
+            <button
+              id="claudeSubmitCodeBtn"
+              style="
+                background: linear-gradient(120deg, var(--accent), var(--accent-2));
+                color: #0a0b10;
+                border: none;
+                border-radius: 10px;
+                padding: 12px 20px;
+                font-size: 14px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: transform 150ms ease, box-shadow 150ms ease;
+                width: 100%;
+                margin-top: 8px;
+              "
+              onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 20px rgba(108, 240, 194, 0.3)'"
+              onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
+            >Submit Code</button>
+            <button
+              id="claudeCancelOAuthBtn"
+              style="
+                background: transparent;
+                border: 1px solid var(--card-border);
+                border-radius: 10px;
+                padding: 10px 16px;
+                font-size: 13px;
+                color: var(--muted);
+                cursor: pointer;
+                width: 100%;
+                margin-top: 8px;
+              "
+            >Cancel</button>
+          </div>
+        </div>
+
+        <!-- Divider -->
+        <div style="
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          color: var(--muted);
+          font-size: 13px;
+        ">
+          <div style="flex: 1; height: 1px; background: var(--card-border);"></div>
+          <span>OR</span>
+          <div style="flex: 1; height: 1px; background: var(--card-border);"></div>
+        </div>
+
+        <!-- API Key Section -->
         <div style="
           display: flex;
           flex-direction: column;
@@ -1601,111 +1721,344 @@ function showClaudeLoginForm(loginUrl, errorMessage) {
             "
           />
           <button
-            id="claudeLoginBtn"
+            id="claudeApiKeyBtn"
             style="
-              background: linear-gradient(120deg, var(--accent), var(--accent-2));
-              color: #0a0b10;
-              border: none;
+              background: rgba(255, 255, 255, 0.1);
+              color: var(--text);
+              border: 1px solid var(--card-border);
               border-radius: 10px;
               padding: 12px 20px;
               font-size: 14px;
               font-weight: 600;
               cursor: pointer;
-              transition: transform 150ms ease, box-shadow 150ms ease;
+              transition: all 150ms ease;
               width: 100%;
             "
-            onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 20px rgba(108, 240, 194, 0.3)'"
-            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
+            onmouseover="this.style.background='rgba(255, 255, 255, 0.15)'"
+            onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'"
           >Submit API Key</button>
         </div>
-        ${loginUrl ? `<div style="
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          color: var(--muted);
-          font-size: 13px;
-        ">
-          <div style="flex: 1; height: 1px; background: var(--card-border);"></div>
-          <span>OR</span>
-          <div style="flex: 1; height: 1px; background: var(--card-border);"></div>
-        </div>
-        <a
-          href="${loginUrl}"
-          target="_blank"
-          rel="noopener noreferrer"
-          style="
-            background: rgba(94, 163, 255, 0.15);
-            border: 1px solid rgba(94, 163, 255, 0.3);
-            border-radius: 10px;
-            padding: 12px 20px;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--accent-2);
-            text-decoration: none;
-            transition: all 150ms ease;
-            display: block;
-          "
-          onmouseover="this.style.background='rgba(94, 163, 255, 0.25)'; this.style.borderColor='rgba(94, 163, 255, 0.5)'"
-          onmouseout="this.style.background='rgba(94, 163, 255, 0.15)'; this.style.borderColor='rgba(94, 163, 255, 0.3)'"
-        >Log in with Claude.ai</a>` : ''}
       </div>
       <p style="
         margin: 0;
         font-size: 12px;
         color: var(--muted);
         max-width: 400px;
-      ">Get your API key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: none;">console.anthropic.com</a></p>
+      ">Get an API key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" style="color: var(--accent); text-decoration: none;">console.anthropic.com</a></p>
     </div>
   `;
 
   ui.claudeOutput.innerHTML = formHtml;
   setClaudeStatus('error', 'Not Authenticated');
 
-  // Add event listener for submit button
-  const loginBtn = document.getElementById('claudeLoginBtn');
+  // Show error if provided
+  if (errorMessage) {
+    showAuthError(errorMessage);
+  }
+
+  // Setup OAuth button
+  const oauthBtn = document.getElementById('claudeOAuthBtn');
+  const authCodeInput = document.getElementById('claudeAuthCodeInput');
+  const submitCodeBtn = document.getElementById('claudeSubmitCodeBtn');
+  const cancelOAuthBtn = document.getElementById('claudeCancelOAuthBtn');
+
+  if (oauthBtn) {
+    oauthBtn.addEventListener('click', startOAuthFlow);
+  }
+
+  if (submitCodeBtn && authCodeInput) {
+    submitCodeBtn.addEventListener('click', () => submitAuthCode(authCodeInput.value));
+    authCodeInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') submitAuthCode(authCodeInput.value);
+    });
+  }
+
+  if (cancelOAuthBtn) {
+    cancelOAuthBtn.addEventListener('click', cancelOAuthFlow);
+  }
+
+  // Setup API key button
+  const apiKeyBtn = document.getElementById('claudeApiKeyBtn');
   const apiKeyInput = document.getElementById('claudeApiKeyInput');
 
-  if (loginBtn && apiKeyInput) {
-    loginBtn.addEventListener('click', async () => {
-      const apiKey = apiKeyInput.value.trim();
-      if (!apiKey) {
-        alert('Please enter an API key');
-        return;
+  if (apiKeyBtn && apiKeyInput) {
+    apiKeyBtn.addEventListener('click', () => submitApiKey(apiKeyInput.value));
+    apiKeyInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') submitApiKey(apiKeyInput.value);
+    });
+  }
+}
+
+function showAuthError(message) {
+  const errorDiv = document.getElementById('claudeAuthError');
+  if (errorDiv) {
+    errorDiv.style.display = 'block';
+    errorDiv.innerHTML = `<p style="
+      margin: 0;
+      font-size: 13px;
+      color: var(--danger);
+      padding: 8px 12px;
+      background: rgba(255, 107, 107, 0.1);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 107, 107, 0.3);
+    ">${escapeHtml(message)}</p>`;
+  }
+}
+
+function showAuthStatus(message) {
+  const statusDiv = document.getElementById('claudeAuthStatus');
+  if (statusDiv) {
+    statusDiv.style.display = 'block';
+    statusDiv.innerHTML = `<p style="
+      margin: 0;
+      font-size: 13px;
+      color: var(--accent);
+      padding: 8px 12px;
+      background: rgba(108, 240, 194, 0.1);
+      border-radius: 8px;
+      border: 1px solid rgba(108, 240, 194, 0.3);
+    ">${escapeHtml(message)}</p>`;
+  }
+}
+
+function hideAuthMessages() {
+  const errorDiv = document.getElementById('claudeAuthError');
+  const statusDiv = document.getElementById('claudeAuthStatus');
+  if (errorDiv) errorDiv.style.display = 'none';
+  if (statusDiv) statusDiv.style.display = 'none';
+}
+
+async function startOAuthFlow() {
+  console.log('[FRONTEND] Starting OAuth flow...');
+  const oauthBtn = document.getElementById('claudeOAuthBtn');
+
+  if (oauthBtn) {
+    oauthBtn.disabled = true;
+    oauthBtn.textContent = 'Starting...';
+  }
+
+  hideAuthMessages();
+  showAuthStatus('Starting authentication...');
+
+  try {
+    // Start the OAuth flow
+    const res = await fetch('/claude/auth/oauth/start', { method: 'POST' });
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to start OAuth flow');
+    }
+
+    // Subscribe to OAuth events
+    subscribeToOAuthEvents();
+  } catch (err) {
+    console.error('[FRONTEND] Error starting OAuth:', err);
+    showAuthError(err.message);
+    if (oauthBtn) {
+      oauthBtn.disabled = false;
+      oauthBtn.textContent = 'Log in with Claude.ai';
+    }
+  }
+}
+
+function subscribeToOAuthEvents() {
+  // Close existing connection if any
+  if (oauthEventSource) {
+    oauthEventSource.close();
+  }
+
+  console.log('[FRONTEND] Subscribing to OAuth events...');
+  oauthEventSource = new EventSource('/claude/auth/oauth/events');
+
+  oauthEventSource.onmessage = (event) => {
+    try {
+      const status = JSON.parse(event.data);
+      console.log('[FRONTEND] OAuth status:', status);
+      handleOAuthStatus(status);
+    } catch (err) {
+      console.error('[FRONTEND] Error parsing OAuth event:', err);
+    }
+  };
+
+  oauthEventSource.onerror = (err) => {
+    console.error('[FRONTEND] OAuth SSE error:', err);
+    oauthEventSource.close();
+    oauthEventSource = null;
+  };
+}
+
+function handleOAuthStatus(status) {
+  const oauthBtn = document.getElementById('claudeOAuthBtn');
+  const authUrlSection = document.getElementById('claudeAuthUrlSection');
+  const authUrl = document.getElementById('claudeAuthUrl');
+  const submitCodeBtn = document.getElementById('claudeSubmitCodeBtn');
+
+  hideAuthMessages();
+
+  switch (status.status) {
+    case 'waiting_for_url':
+      showAuthStatus(status.message || 'Waiting for authentication URL...');
+      break;
+
+    case 'url_ready':
+      if (oauthBtn) oauthBtn.style.display = 'none';
+      if (authUrlSection) authUrlSection.style.display = 'block';
+      if (authUrl && status.authUrl) {
+        authUrl.href = status.authUrl;
+        authUrl.textContent = status.authUrl;
       }
+      showAuthStatus('Click the URL above and complete authentication');
+      break;
 
-      loginBtn.disabled = true;
-      loginBtn.textContent = 'Authenticating...';
+    case 'waiting_for_code':
+      showAuthStatus(status.message || 'Waiting for authentication code...');
+      break;
 
-      try {
-        const res = await fetch('/claude/auth/set-key', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey }),
-        });
+    case 'authenticating':
+      if (submitCodeBtn) {
+        submitCodeBtn.disabled = true;
+        submitCodeBtn.textContent = 'Verifying...';
+      }
+      showAuthStatus(status.message || 'Verifying code...');
+      break;
 
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'Failed to set API key');
-        }
-
-        console.log('[FRONTEND] API key set successfully');
-        claudeAuthState.isAuthenticated = true;
+    case 'success':
+      showAuthStatus('Authentication successful!');
+      if (oauthEventSource) {
+        oauthEventSource.close();
+        oauthEventSource = null;
+      }
+      claudeAuthState.isAuthenticated = true;
+      setTimeout(() => {
         hideClaudeLoginForm();
         setClaudeStatus('connected', 'Ready');
-      } catch (err) {
-        console.error('[FRONTEND] Error setting API key:', err);
-        alert('Failed to set API key: ' + err.message);
-        loginBtn.disabled = false;
-        loginBtn.textContent = 'Submit API Key';
+      }, 1000);
+      break;
+
+    case 'error':
+      showAuthError(status.error || 'Authentication failed');
+      if (oauthBtn) {
+        oauthBtn.style.display = 'block';
+        oauthBtn.disabled = false;
+        oauthBtn.textContent = 'Log in with Claude.ai';
       }
+      if (authUrlSection) authUrlSection.style.display = 'none';
+      if (oauthEventSource) {
+        oauthEventSource.close();
+        oauthEventSource = null;
+      }
+      break;
+
+    case 'idle':
+      if (oauthBtn) {
+        oauthBtn.style.display = 'block';
+        oauthBtn.disabled = false;
+        oauthBtn.textContent = 'Log in with Claude.ai';
+      }
+      if (authUrlSection) authUrlSection.style.display = 'none';
+      break;
+  }
+}
+
+async function submitAuthCode(code) {
+  if (!code || !code.trim()) {
+    showAuthError('Please enter the authentication code');
+    return;
+  }
+
+  console.log('[FRONTEND] Submitting auth code...');
+  const submitCodeBtn = document.getElementById('claudeSubmitCodeBtn');
+
+  if (submitCodeBtn) {
+    submitCodeBtn.disabled = true;
+    submitCodeBtn.textContent = 'Verifying...';
+  }
+
+  try {
+    const res = await fetch('/claude/auth/oauth/input', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ input: code.trim() }),
     });
 
-    // Allow Enter key to submit
-    apiKeyInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        loginBtn.click();
-      }
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to submit code');
+    }
+    // Status will be updated via SSE
+  } catch (err) {
+    console.error('[FRONTEND] Error submitting code:', err);
+    showAuthError(err.message);
+    if (submitCodeBtn) {
+      submitCodeBtn.disabled = false;
+      submitCodeBtn.textContent = 'Submit Code';
+    }
+  }
+}
+
+async function cancelOAuthFlow() {
+  console.log('[FRONTEND] Cancelling OAuth flow...');
+
+  if (oauthEventSource) {
+    oauthEventSource.close();
+    oauthEventSource = null;
+  }
+
+  try {
+    await fetch('/claude/auth/oauth/cancel', { method: 'POST' });
+  } catch (err) {
+    console.error('[FRONTEND] Error cancelling OAuth:', err);
+  }
+
+  // Reset UI
+  const oauthBtn = document.getElementById('claudeOAuthBtn');
+  const authUrlSection = document.getElementById('claudeAuthUrlSection');
+
+  if (oauthBtn) {
+    oauthBtn.style.display = 'block';
+    oauthBtn.disabled = false;
+    oauthBtn.textContent = 'Log in with Claude.ai';
+  }
+  if (authUrlSection) authUrlSection.style.display = 'none';
+  hideAuthMessages();
+}
+
+async function submitApiKey(apiKey) {
+  if (!apiKey || !apiKey.trim()) {
+    showAuthError('Please enter an API key');
+    return;
+  }
+
+  console.log('[FRONTEND] Submitting API key...');
+  const apiKeyBtn = document.getElementById('claudeApiKeyBtn');
+
+  if (apiKeyBtn) {
+    apiKeyBtn.disabled = true;
+    apiKeyBtn.textContent = 'Authenticating...';
+  }
+
+  try {
+    const res = await fetch('/claude/auth/set-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: apiKey.trim() }),
     });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to set API key');
+    }
+
+    console.log('[FRONTEND] API key set successfully');
+    claudeAuthState.isAuthenticated = true;
+    hideClaudeLoginForm();
+    setClaudeStatus('connected', 'Ready');
+  } catch (err) {
+    console.error('[FRONTEND] Error setting API key:', err);
+    showAuthError(err.message);
+    if (apiKeyBtn) {
+      apiKeyBtn.disabled = false;
+      apiKeyBtn.textContent = 'Submit API Key';
+    }
   }
 }
 
