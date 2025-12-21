@@ -1,6 +1,7 @@
 {
-  "name": "webrtc-openai-voice-bridge",
+  "name": "vcode",
   "version": "0.1.0",
+  "description": "Voice-controlled coding agent that handles complex code and terminal tasks through natural speech",
   "private": true,
   "type": "module",
   "bin": {

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**vcode** - A voice-controlled coding agent that handles complex code and terminal tasks through natural speech.
+**VCode** - A voice-controlled coding agent that handles complex code and terminal tasks through natural speech.
 
 The system bridges browser WebRTC audio to OpenAI's Realtime voice API, with integrated Codex (OpenAI) and Claude Code (Anthropic) agents that can execute code generation, file operations, and terminal commands. Multiple browser tabs can connect simultaneously to a shared long-lived session.
 
@@ -52,6 +52,13 @@ The Codex service ([codex.service.ts](src/codex/codex.service.ts)) runs OpenAI C
 
 Events stream via SSE at `/codex/events`.
 
+### Claude Agent
+
+The Claude service ([claude.service.ts](src/claude/claude.service.ts)) integrates Claude Code with:
+- OAuth authentication support
+- SSE event streaming at `/claude/events`
+- Thread management for persistent context
+
 ### Critical: Connection Order
 
 **ALWAYS establish OpenAI connection BEFORE accepting browser offer.** In [browser-bridge.ts](src/webrtc/browser-bridge.ts), `realtimeSessionManager.getSession()` is called first. This prevents audio jitter and packet loss.
@@ -60,11 +67,14 @@ Events stream via SSE at `/codex/events`.
 
 | File | Purpose |
 |------|---------|
-| [src/server.ts](src/server.ts) | Express app, `/signal` WebRTC endpoint, `/codex/*` endpoints |
+| [src/server.ts](src/server.ts) | Express app, `/signal` WebRTC endpoint, `/codex/*` and `/claude/*` endpoints |
 | [src/webrtc/browser-bridge.ts](src/webrtc/browser-bridge.ts) | Multi-frontend WebRTC bridging, connection management |
 | [src/openai/openai.realtime.ts](src/openai/openai.realtime.ts) | Long-lived OpenAI Realtime session manager, data channel |
 | [src/codex/codex.service.ts](src/codex/codex.service.ts) | Codex SDK wrapper, thread management, event broadcasting |
+| [src/claude/claude.service.ts](src/claude/claude.service.ts) | Claude Code agent integration |
+| [src/claude/claude.oauth.ts](src/claude/claude.oauth.ts) | Claude OAuth authentication |
 | [src/memory/context.memory.ts](src/memory/context.memory.ts) | Persistent context memory across sessions |
+| [src/conversations/conversation.storage.ts](src/conversations/conversation.storage.ts) | Conversation history persistence |
 | [src/cli.ts](src/cli.ts) | Global `vcode` command entrypoint |
 | [public/main.js](public/main.js) | Browser WebRTC client, audio meters, UI |
 
@@ -81,6 +91,12 @@ Events stream via SSE at `/codex/events`.
 | `/codex/reset` | POST | Reset Codex thread |
 | `/codex/status` | GET | Get current thread ID |
 | `/codex/events` | GET | SSE stream of Codex events |
+| `/claude/run` | POST | Run Claude with `{prompt}` |
+| `/claude/stop` | POST | Abort current Claude execution |
+| `/claude/reset` | POST | Reset Claude thread |
+| `/claude/status` | GET | Get Claude authentication status |
+| `/claude/events` | GET | SSE stream of Claude events |
+| `/claude/auth` | POST | Handle Claude authentication |
 
 ## Build System
 
@@ -94,8 +110,10 @@ Uses **ESM** (ES2020 modules):
 Create `.env` from `.env.example`:
 ```env
 OPENAI_API_KEY=sk-proj-...    # Required
+ANTHROPIC_API_KEY=sk-ant-...  # Optional (can authenticate via UI)
 REALTIME_MODEL=gpt-4o-realtime-preview-2024-10-01
 PORT=8765
+SSL_ENABLED=true              # HTTPS enabled by default
 ```
 
 ## Logging Prefixes
@@ -107,6 +125,7 @@ All components use structured logging:
 - `[SESSION-MANAGER]` - OpenAI session lifecycle
 - `[OPENAI-REALTIME]` - OpenAI connection, data channel
 - `[CODEX]` - Codex service operations
+- `[CLAUDE]` - Claude service operations
 - `[MEMORY]` - Context memory operations
 - `[FRONTEND]` - Browser client (in console)
 
@@ -121,10 +140,12 @@ Filter logs: `npm start 2>&1 | grep CODEX`
 npm start
 
 # Terminal 2 - Frontend logs + browser window
-npm run test:interactive
+npm run test:e2e
 ```
 
 Playwright opens Chromium with auto-granted mic permissions and captures all frontend console logs.
+
+See [DEBUGGING.md](DEBUGGING.md) for comprehensive debugging guide.
 
 ## wrtc Nonstandard APIs
 
@@ -142,10 +163,10 @@ Audio frames are `{ samples: Int16Array }` - PCM16 format bridged frame-by-frame
 
 ## Multi-Frontend Features
 
-- **Auto-connect on page load** - Frontend connects automatically when opened, no Start button needed
+- **Auto-connect on page load** - Frontend connects automatically when opened
 - **Start muted** - Both mic and AI audio are muted by default to prevent echo/feedback
 - **Multiple browser tabs** can connect to the same OpenAI session simultaneously
-- **Independent mute controls** - Each frontend can independently mute mic ("Unmute") and assistant audio ("Unmute AI")
+- **Independent mute controls** - Each frontend can independently mute mic and assistant audio
 - **Connection tracking** - Each frontend gets a unique connection ID
 - **Graceful disconnect** - Frontend cleanup on tab close via `beforeunload` + sendBeacon
 
@@ -154,6 +175,7 @@ Audio frames are `{ samples: Int16Array }` - PCM16 format bridged frame-by-frame
 The browser UI auto-connects on load and provides:
 - **Unmute button** - Toggle microphone (starts muted)
 - **Unmute AI button** - Toggle assistant audio playback (starts muted)
+- **Start/Stop button** - Control voice session lifecycle
 - **Audio meters** - Visual feedback for outgoing (mic) and incoming (AI) audio levels
 - **Transcript tab** - Real-time transcription of conversation
 - **Codex tab** - OpenAI Codex agent activity and output
@@ -164,9 +186,8 @@ The browser UI auto-connects on load and provides:
 The Claude tab automatically detects if `ANTHROPIC_API_KEY` is set. If not authenticated:
 
 1. A login form appears in the Claude panel
-2. Users can enter their Anthropic API key directly in the UI
-3. The key is set in the server's environment for the current session
-4. After authentication, Claude Code becomes available for use
+2. Users can authenticate via OAuth or enter their API key directly
+3. After authentication, Claude Code becomes available for use
 
 **To get an API key:**
 - Visit [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys)
