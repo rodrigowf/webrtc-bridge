@@ -31,6 +31,11 @@ import {
 import {
   checkClaudeAuth,
   setClaudeApiKey,
+  startOAuthFlow,
+  sendOAuthInput,
+  cancelOAuthFlow,
+  getOAuthStatus,
+  subscribeOAuthEvents,
 } from './claude/claude.auth.js';
 import { subscribeTranscriptEvents } from './openai/openai.realtime.js';
 import { displayServerInfo } from './utils/network-info.js';
@@ -432,6 +437,80 @@ app.post('/claude/auth/set-key', (req, res) => {
     console.error('[SERVER] Error setting Claude API key:', err);
     res.status(500).json({ error: 'Failed to set API key' });
   }
+});
+
+// OAuth flow endpoints
+app.post('/claude/auth/oauth/start', async (_req, res) => {
+  console.log('[SERVER] /claude/auth/oauth/start endpoint called');
+  try {
+    await startOAuthFlow();
+    res.json({ success: true, message: 'OAuth flow started' });
+  } catch (err: any) {
+    console.error('[SERVER] Error starting OAuth flow:', err);
+    res.status(500).json({ error: err?.message || 'Failed to start OAuth flow' });
+  }
+});
+
+app.get('/claude/auth/oauth/status', (_req, res) => {
+  console.log('[SERVER] /claude/auth/oauth/status endpoint called');
+  try {
+    const status = getOAuthStatus();
+    res.json(status);
+  } catch (err: any) {
+    console.error('[SERVER] Error getting OAuth status:', err);
+    res.status(500).json({ error: err?.message || 'Failed to get OAuth status' });
+  }
+});
+
+app.post('/claude/auth/oauth/input', (req, res) => {
+  console.log('[SERVER] /claude/auth/oauth/input endpoint called');
+  const { input } = req.body ?? {};
+
+  if (!input || typeof input !== 'string') {
+    return res.status(400).json({ error: 'Input is required' });
+  }
+
+  try {
+    sendOAuthInput(input.trim());
+    res.json({ success: true, message: 'Input sent' });
+  } catch (err: any) {
+    console.error('[SERVER] Error sending OAuth input:', err);
+    res.status(500).json({ error: err?.message || 'Failed to send input' });
+  }
+});
+
+app.post('/claude/auth/oauth/cancel', (_req, res) => {
+  console.log('[SERVER] /claude/auth/oauth/cancel endpoint called');
+  try {
+    cancelOAuthFlow();
+    res.json({ success: true, message: 'OAuth flow cancelled' });
+  } catch (err: any) {
+    console.error('[SERVER] Error cancelling OAuth flow:', err);
+    res.status(500).json({ error: err?.message || 'Failed to cancel OAuth flow' });
+  }
+});
+
+// SSE endpoint for OAuth events
+app.get('/claude/auth/oauth/events', (req, res) => {
+  console.log('[SERVER] /claude/auth/oauth/events SSE connection established');
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  // Send initial status
+  const initialStatus = getOAuthStatus();
+  res.write(`data: ${JSON.stringify(initialStatus)}\n\n`);
+
+  // Subscribe to OAuth events
+  const unsubscribe = subscribeOAuthEvents((status) => {
+    res.write(`data: ${JSON.stringify(status)}\n\n`);
+  });
+
+  req.on('close', () => {
+    console.log('[SERVER] OAuth SSE connection closed');
+    unsubscribe();
+  });
 });
 
 // Inner thoughts visibility endpoints

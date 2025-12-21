@@ -1,0 +1,38 @@
+{
+  "id": "a20b9aa5b31fbb60",
+  "title": "Hello, my friend",
+  "createdAt": 1766214627481,
+  "updatedAt": 1766214681738,
+  "transcript": [
+    {
+      "role": "user",
+      "text": "Hello, my friend",
+      "timestamp": 1766214645291
+    },
+    {
+      "role": "assistant",
+      "text": "Hey there! Great to hear from you. What can I help you with today?",
+      "timestamp": 1766214646545
+    },
+    {
+      "role": "user",
+      "text": "Let's try to use Cloud Code to take a look at the current code base, okay?",
+      "timestamp": 1766214660934
+    },
+    {
+      "role": "assistant",
+      "text": "It looks like we ran into an issue with Claude. Let's try again or adjust our approach. Would you like me to retry, or switch to a different method like using Codex for a quick overview first?",
+      "timestamp": 1766214665882
+    },
+    {
+      "role": "user",
+      "text": "Let me just try to fix that real quick.",
+      "timestamp": 1766214681571
+    },
+    {
+      "role": "assistant",
+      "text": "Sure, take your time. Let me know when you're ready, and we can give it another shot.",
+      "timestamp": 1766214681737
+    }
+  ]
+}

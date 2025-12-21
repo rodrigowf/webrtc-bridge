@@ -74,6 +74,8 @@ async function ensureClaudeModule(): Promise<ClaudeAgentModule> {
       throw err;
     }
   }
+  // Note: OAuth credentials are read automatically by the Claude CLI from ~/.claude/.credentials.json
+  // We don't need to set ANTHROPIC_API_KEY for OAuth - that only works for actual API keys
   return claudeModule;
 }
 
