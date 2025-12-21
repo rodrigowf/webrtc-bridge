@@ -1,4 +1,4 @@
-# Context Memory
+# VCode Context Memory
 
 Persistent notes the assistant should read on startup so context survives across runs.
 
@@ -16,11 +16,12 @@ Persistent notes the assistant should read on startup so context survives across
 - (log decisions or agreements to honor later)
 
 ## Project Details
-- App: WebRTC <-> OpenAI Realtime voice bridge (Node.js + TypeScript backend, minimal frontend UI).
+- App: VCode - Voice-controlled coding agent (Node.js + TypeScript backend, PWA frontend).
 - Default port: 8765 (configurable via .env PORT).
 - CLI: `vcode` -> `dist/cli.js` starts the built server.
 - Build/dev: `npm run dev`, `npm run build`, `npm start`.
-- Tests: `npm test` (healthz + Codex endpoints), Playwright E2E available.
+- Tests: `npm test` (healthz + agent endpoints), Playwright E2E available.
+- Dual AI agents: OpenAI Codex and Claude Code for coding tasks.
 
 ## Run Log
 - Initialized context memory; entries will be appended automatically on each assistant startup.

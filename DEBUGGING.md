@@ -1,6 +1,6 @@
-# Interactive Debugging Guide
+# VCode Interactive Debugging Guide
 
-This project includes **comprehensive logging throughout the entire codebase** plus interactive E2E testing tools built with Playwright that allow you to manually test the WebRTC bridge while monitoring both frontend and backend logs in real-time. The UI now exposes live dual audio meters (outgoing mic → model, incoming model → you) so you can visually confirm levels in both directions.
+VCode includes **comprehensive logging throughout the entire codebase** plus interactive E2E testing tools built with Playwright that allow you to manually test the WebRTC bridge while monitoring both frontend and backend logs in real-time. The UI exposes live dual audio meters (outgoing mic → model, incoming model → you) so you can visually confirm levels in both directions.
 
 ## Comprehensive Logging System
 
